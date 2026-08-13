@@ -111,7 +111,7 @@ The reference table has 1,969 resource locations and already holds names, addres
 - **KTD4. Deterministic gates precede AI.** Identity resolution, field diffing, source recency, and publication authorization are deterministic. AI receives only bounded extracted evidence and returns a schema-constrained advisory result; it cannot merge, approve, close, request tools, expand source scope, or write records. Governs R5, R6, R7, R9.
 - **KTD5. Bounded retrieval.** Call Firecrawl v2 scrape first. Permit Interact only on an allowlisted public URL after defined failure conditions, with page/action/time budgets and session cleanup. Web content is untrusted data, never instructions. Governs R3, R4, R7.
 - **KTD6. Vercel triggers only durable batches.** Monthly/bimonthly selection enqueues due records; guarded short invocations drain checkpoints under provider budgets until the queue is complete. Manual continuation is the initial v1 path. This accommodates Vercel function duration limits and absent cron retries. Governs R2, R10.
-- **KTD7. Microsoft Entra sign-in restricts the reviewer application.** Rush-affiliated authenticated users are checked against an approved reviewer allowlist stored in the review database. Governs R8.
+- **KTD7. Clerk protects the reviewer application.** The small ChicagoHealthMap team signs in through Clerk's free tier; each reviewer decision records the authenticated Clerk user ID. Governs R8.
 - **KTD8. Publisher isolation follows the production network.** The review app creates a publish intent only. A separately deployed publisher alone has production credentials and service authorization. If production requires a private Azure network, this small publisher moves to Azure; it does not create another database copy. Governs R9.
 
 ### High-Level Technical Design
@@ -226,7 +226,7 @@ vercel.json            manual/scheduled trigger definition
 
 ### U3. Build the protected reviewer queue
 
-**Goal:** Give approved Rush reviewers a focused Vercel interface to inspect and decide candidate changes.
+**Goal:** Give authenticated ChicagoHealthMap reviewers a focused Vercel interface to inspect and decide candidate changes.
 
 **Requirements:** R2, R5, R6, R8, R9. Covers F1, F2, F3.
 
@@ -236,7 +236,7 @@ vercel.json            manual/scheduled trigger definition
 
 **Approach:**
 
-1. Authenticate with Microsoft Entra and authorize only a reviewed allowlist; authorize manual run initiation separately from review.
+1. Authenticate with Clerk and protect reviewer and manual-run routes; record the Clerk user ID with each decision.
 2. Show the candidate’s source record, proposed diff, evidence excerpts/links, scores, conflicts, retrieval issues, and explicit active/closed/unable-to-verify outcome semantics together.
 3. Require a decision reason for rejection, defer, reviewer edit, and approval; bind the decision to the exact candidate revision and retain reviewer identity and time.
 4. Define `staged → deferred/rejected/approved → publish_pending → published|publish_failed`, with reviewer edits or new evidence creating a superseding revision and invalidating approval.
@@ -325,7 +325,7 @@ vercel.json            manual/scheduled trigger definition
 
 **Approach:**
 
-1. Keep Firecrawl, Google, search, AI, Neon, Entra, and production credentials outside the repository; production credentials exist only in the publisher deployment’s production environment. Document required scopes and budget caps without values.
+1. Keep Clerk, Firecrawl, Google, search, AI, Neon, and production credentials outside the repository; production credentials exist only in the publisher deployment’s production environment. Document required scopes and budget caps without values.
 2. Run lint, typecheck, and tests on pull requests; never run collection or production publishing from CI.
 3. Track run-level counts, provider cost/limit events, duration, candidate decisions, publication results, and blocked-source rates in Neon-backed operational records.
 4. Document source hierarchy, retention/redaction policy for raw evidence, review authority, incident response, production rollback, emergency publisher disablement, and the backup/restore owner.

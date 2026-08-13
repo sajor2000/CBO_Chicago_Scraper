@@ -1,24 +1,26 @@
-import { authorizeReviewer, FixtureModeError, fixtureUserFromHeader } from "../../../lib/auth.ts";
+import { auth } from "@clerk/nextjs/server";
 import { reviewRepository, RevisionConflictError, type CandidateAction } from "../../../lib/repositories/review.ts";
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const reviewer = authorizeReviewer(fixtureUserFromHeader(request));
+    const { userId } = await auth();
+    if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
     const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction; fields?: string[]; reason: string };
-    const candidate = reviewRepository.decide({ ...body, reviewerEmail: reviewer.email });
+    const candidate = reviewRepository.decide({ ...body, reviewerEmail: userId });
     return Response.json(candidate);
   } catch (error) {
-    const status = error instanceof RevisionConflictError ? 409 : error instanceof FixtureModeError ? 503 : 403;
+    const status = error instanceof RevisionConflictError ? 409 : 400;
     return Response.json({ error: error instanceof Error ? error.message : "Review decision failed." }, { status });
   }
 }
 
-export function GET(request: Request): Response {
+export async function GET(request: Request): Promise<Response> {
   try {
-    authorizeReviewer(fixtureUserFromHeader(request));
+    const { userId } = await auth();
+    if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
     const limit = Number(new URL(request.url).searchParams.get("limit") ?? "50");
     return Response.json(reviewRepository.list(Number.isFinite(limit) ? limit : 50));
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Reviewer authorization required." }, { status: error instanceof FixtureModeError ? 503 : 403 });
+    return Response.json({ error: error instanceof Error ? error.message : "Review request failed." }, { status: 400 });
   }
 }

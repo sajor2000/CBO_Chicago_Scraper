@@ -6,8 +6,8 @@ This is a fixture-only review workspace. A run creates an in-memory report; it d
 
 ## Roles
 
-- **Run operator:** starts, cancels, or resumes a bounded dry run; configured through `RUN_OPERATOR_ALLOWLIST`.
-- **Reviewer:** evaluates evidence and records an approve, decline, or defer decision; configured through `REVIEWER_ALLOWLIST`.
+- **Run operator:** starts, cancels, or resumes a bounded dry run; must be signed in with Clerk.
+- **Reviewer:** evaluates evidence and records an approve, decline, or defer decision; must be signed in with Clerk.
 - **Publisher operator (future):** operates the separate production publisher after a production-copy test and approved reversible canary. This role must not be combined with routine review access.
 - **Service owner:** owns provider budgets, deployment access, backups, incidents, and post-incident review.
 

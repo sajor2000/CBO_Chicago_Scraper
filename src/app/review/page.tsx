@@ -1,3 +1,5 @@
+import { UserButton } from "@clerk/nextjs";
+
 export default function ReviewQueuePage() {
-  return <main><h1>Reviewer queue</h1><p>Sign in with an approved Rush account to review staged evidence.</p></main>;
+  return <main><UserButton /><h1>Reviewer queue</h1><p>Review staged evidence and approve only the supported field changes.</p></main>;
 }

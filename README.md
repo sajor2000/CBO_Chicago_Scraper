@@ -1,6 +1,6 @@
 # Chicago CBO resource verification
 
-Reviewer-first workspace for checking Chicago-area community resources against captured evidence. It currently runs only deterministic fixtures: provider adapters make no network requests, the run registry is in memory, and no production publisher exists.
+Reviewer-first workspace for checking Chicago-area community resources against captured evidence. Clerk provides the small team’s sign-in; provider adapters currently make no network requests, the run registry is in memory, and no production publisher exists.
 
 ## Local check
 
