@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { InMemoryReviewRepository, RevisionConflictError } from "../src/lib/repositories/review.ts";
+import { readFileSync } from "node:fs";
 
 test("approval stores a field subset and stale decisions fail compare-and-swap", () => {
   const reviews = new InMemoryReviewRepository();
@@ -19,4 +20,10 @@ test("a superseding edit invalidates prior approval and retains the audit histor
   assert.equal(edited.revision, 3);
   assert.equal(edited.approvedValues, undefined);
   assert.equal(reviews.history("c2").length, 3);
+});
+
+test("operator controls prevent a second launch while a pilot request is in flight", () => {
+  const controls = readFileSync(new URL("../src/app/review/run-controls.tsx", import.meta.url), "utf8");
+  assert.match(controls, /const \[busy, setBusy\] = useState\(false\)/);
+  assert.match(controls, /disabled=\{!selected\.length \|\| busy\}/);
 });
