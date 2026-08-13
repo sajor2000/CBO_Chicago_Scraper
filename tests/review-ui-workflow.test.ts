@@ -5,16 +5,16 @@ import { InMemoryReviewRepository, RevisionConflictError } from "../src/lib/repo
 test("approval stores a field subset and stale decisions fail compare-and-swap", () => {
   const reviews = new InMemoryReviewRepository();
   const candidate = reviews.stage({ id: "c1", proposedValues: { address: "2 New St", phone: "555-1212" }, evidence: ["official", "google"] });
-  const approved = reviews.decide({ candidateId: candidate.id, expectedRevision: 1, reviewerEmail: "reviewer@rush.edu", action: "approved", fields: ["address"], reason: "Both sources agree." });
+  const approved = reviews.decide({ candidateId: candidate.id, expectedRevision: 1, reviewerSubject: "reviewer-1", action: "approved", fields: ["address"], reason: "Both sources agree." });
   assert.deepEqual(approved.approvedValues, { address: "2 New St" });
-  assert.throws(() => reviews.decide({ candidateId: candidate.id, expectedRevision: 1, reviewerEmail: "other@rush.edu", action: "rejected", reason: "stale" }), RevisionConflictError);
+  assert.throws(() => reviews.decide({ candidateId: candidate.id, expectedRevision: 1, reviewerSubject: "reviewer-2", action: "rejected", reason: "stale" }), RevisionConflictError);
 });
 
 test("a superseding edit invalidates prior approval and retains the audit history", () => {
   const reviews = new InMemoryReviewRepository();
   reviews.stage({ id: "c2", proposedValues: { address: "2 New St" } });
-  const approved = reviews.decide({ candidateId: "c2", expectedRevision: 1, reviewerEmail: "reviewer@rush.edu", action: "approved", fields: ["address"], reason: "confirmed" });
-  const edited = reviews.supersede({ candidateId: "c2", expectedRevision: approved.revision, proposedValues: { address: "3 New St" }, actorEmail: "reviewer@rush.edu", reason: "New evidence" });
+  const approved = reviews.decide({ candidateId: "c2", expectedRevision: 1, reviewerSubject: "reviewer-1", action: "approved", fields: ["address"], reason: "confirmed" });
+  const edited = reviews.supersede({ candidateId: "c2", expectedRevision: approved.revision, proposedValues: { address: "3 New St" }, actorSubject: "reviewer-1", reason: "New evidence" });
   assert.equal(edited.status, "staged");
   assert.equal(edited.revision, 3);
   assert.equal(edited.approvedValues, undefined);

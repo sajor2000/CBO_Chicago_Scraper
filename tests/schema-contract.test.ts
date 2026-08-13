@@ -51,3 +51,41 @@ test("category taxonomy supports governed approved and proposed assignments", ()
   assert.match(schema, /deprecated_at timestamptz/i);
   assert.match(schema, /approved_by_decision_id uuid references review_workspace\.review_decisions/i);
 });
+
+test("Neon persistence keeps immutable records separate from mutable review projections", () => {
+  const schema = migration("003_neon_review_persistence.sql");
+
+  for (const table of [
+    "workspace_sentinel",
+    "schema_migrations",
+    "resource_snapshot_receipts",
+    "candidate_revision_snapshot_links",
+    "candidate_current_state",
+    "run_current_state",
+    "run_checkpoints",
+    "run_reports"
+  ]) {
+    assert.match(schema, new RegExp(`create table review_workspace\\.${table}`, "i"));
+  }
+
+  assert.match(schema, /workspace_kind text not null check \(workspace_kind = 'dedicated_review_workspace'\)/i);
+  assert.match(schema, /checksum text not null check \(checksum ~ '\^\[a-f0-9\]\{64\}\$'\)/i);
+  assert.match(schema, /candidate_revision_id uuid primary key references review_workspace\.candidate_revisions/i);
+  assert.match(schema, /resource_snapshot_id uuid not null references review_workspace\.resource_snapshots/i);
+  assert.match(schema, /content_sha256 text not null check \(content_sha256 ~ '\^\[a-f0-9\]\{64\}\$'\)/i);
+  assert.match(schema, /add primary key \(subject, role\)/i);
+  assert.match(schema, /role in \('reviewer', 'operator'\)/i);
+  assert.match(schema, /approved_for_future_export/i);
+  assert.match(schema, /lease_token uuid/i);
+  assert.match(schema, /lease_expires_at timestamptz/i);
+  assert.match(schema, /check \(\(lease_token is null\) = \(lease_expires_at is null\)\)/i);
+  assert.match(schema, /candidate_current_state_updated_at_idx/i);
+  assert.match(schema, /review_decisions_candidate_revision_id_idx/i);
+
+  for (const table of ["resource_snapshot_receipts", "candidate_revision_snapshot_links"]) {
+    assert.match(schema, new RegExp(`before update or delete on review_workspace\\.${table}`, "i"));
+  }
+
+  assert.match(schema, /create role review_workspace_app nologin/i);
+  assert.match(schema, /grant usage on schema review_workspace to review_workspace_app/i);
+});
