@@ -104,16 +104,19 @@ npm run build   # Production Next.js build
 6. Keep cron disabled until the manual pilot, reviewer workflow, and cost guardrails are accepted; then enable the guarded every-two-month Vercel schedule.
 7. Build/test the manual Azure patch handoff only after the Azure schema/key/version contract and a non-production target are available.
 
-## Cursor handoff
+## Codex handoff
+
+Current status and blockers: [docs/handoff-codex.md](docs/handoff-codex.md).
 
 Start with these files, in order:
 
-1. [docs/plans/2026-08-13-feat-live-verification-pilot.md](docs/plans/2026-08-13-feat-live-verification-pilot.md) — current manual-pilot scope and safety rules.
-2. [docs/operator-runbook.md](docs/operator-runbook.md) and [docs/source-policy.md](docs/source-policy.md) — operational boundaries.
-3. [src/lib/verification/run-checkpoint.ts](src/lib/verification/run-checkpoint.ts) — one-checkpoint verification lifecycle.
-4. [src/lib/providers/hosted-evidence.ts](src/lib/providers/hosted-evidence.ts) — provider orchestration.
-5. [src/lib/repositories/review.ts](src/lib/repositories/review.ts) and [src/lib/runs/index.ts](src/lib/runs/index.ts) — durable Neon state.
-6. [src/app/review/page.tsx](src/app/review/page.tsx) and [src/app/api/runs](src/app/api/runs) — reviewer/operator surfaces.
+1. [docs/handoff-codex.md](docs/handoff-codex.md) — live status, Neon baseline, Vercel 500 blocker, next tasks.
+2. [docs/plans/2026-08-13-feat-live-verification-pilot.md](docs/plans/2026-08-13-feat-live-verification-pilot.md) — manual-pilot scope and safety rules.
+3. [docs/operator-runbook.md](docs/operator-runbook.md) and [docs/source-policy.md](docs/source-policy.md) — operational boundaries.
+4. [src/lib/verification/run-checkpoint.ts](src/lib/verification/run-checkpoint.ts) — one-checkpoint verification lifecycle.
+5. [src/lib/providers/hosted-evidence.ts](src/lib/providers/hosted-evidence.ts) — provider orchestration.
+6. [src/lib/repositories/review.ts](src/lib/repositories/review.ts) and [src/lib/runs/index.ts](src/lib/runs/index.ts) — durable Neon state.
+7. [src/app/review/page.tsx](src/app/review/page.tsx) and [src/app/api/runs](src/app/api/runs) — reviewer/operator surfaces.
 
 Before changing behavior, run `npm run check`. Preserve the review-first boundary and use the existing tests as the contract; add a focused test for any new provider, state transition, or persistence behavior.
 
