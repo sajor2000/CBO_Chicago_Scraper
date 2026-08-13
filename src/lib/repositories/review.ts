@@ -1,6 +1,7 @@
 export type CandidateStatus = "staged" | "deferred" | "rejected" | "approved" | "publish_pending" | "published" | "publish_failed";
 import type { ReviewDecision } from "../domain/review-workspace.ts";
 import { assertReviewWorkspace, requireWorkspaceRole, reviewWorkspaceDb } from "../db.ts";
+import { redactEvidence } from "../evidence/redaction.ts";
 
 export type CandidateAction = ReviewDecision;
 export type FieldValues = Record<string, string>;
@@ -10,6 +11,7 @@ export interface ReviewCandidate {
   revision: number;
   status: CandidateStatus;
   proposedValues: FieldValues;
+  beforeValues?: FieldValues;
   approvedValues?: FieldValues;
   evidence: string[];
   decisions: ReviewDecisionRecord[];
@@ -23,6 +25,13 @@ export interface ReviewDecisionRecord {
   fields?: string[];
   at: string;
 }
+
+export type BaselineReceipt = { outcome: "succeeded" | "failed"; sourceRows: number; insertedSnapshots: number; unchanged: number; skipped: number; failed: number };
+
+export const isReconciledBaseline = (receipt: BaselineReceipt) => receipt.outcome === "succeeded"
+  && receipt.failed === 0
+  && receipt.skipped === 0
+  && receipt.sourceRows === receipt.insertedSnapshots + receipt.unchanged;
 
 export class RevisionConflictError extends Error {
   constructor() {
@@ -41,9 +50,9 @@ export class InMemoryReviewRepository {
   #candidates = new Map<string, ReviewCandidate>();
   #history = new Map<string, ReviewCandidate[]>();
 
-  stage(input: { id: string; proposedValues: FieldValues; evidence?: string[] }): ReviewCandidate {
+  stage(input: { id: string; proposedValues: FieldValues; beforeValues?: FieldValues; evidence?: string[] }): ReviewCandidate {
     if (this.#candidates.has(input.id)) throw new Error("Candidate already exists.");
-    const candidate: ReviewCandidate = { id: input.id, revision: 1, status: "staged", proposedValues: { ...input.proposedValues }, evidence: [...(input.evidence ?? [])], decisions: [] };
+    const candidate: ReviewCandidate = { id: input.id, revision: 1, status: "staged", proposedValues: { ...input.proposedValues }, beforeValues: input.beforeValues && { ...input.beforeValues }, evidence: [...(input.evidence ?? [])], decisions: [] };
     this.#candidates.set(input.id, candidate);
     this.#history.set(input.id, [clone(candidate)]);
     return clone(candidate);
@@ -70,6 +79,7 @@ export class InMemoryReviewRepository {
   decide(input: { candidateId: string; expectedRevision: number; reviewerSubject: string; action: CandidateAction; fields?: string[]; reason: string }): ReviewCandidate {
     requiredReason(input.reason);
     const candidate = this.#current(input.candidateId, input.expectedRevision);
+    if (candidate.status !== "staged" && candidate.status !== "deferred") throw new RevisionConflictError();
     if (input.action === "approved") {
       if (!input.fields?.length) throw new Error("Approval requires at least one proposed field.");
       if (input.fields.some((field) => !(field in candidate.proposedValues))) throw new Error("Approved fields must be proposed fields.");
@@ -117,6 +127,7 @@ type CandidateRow = {
   revision: number;
   status: "staged" | "deferred" | "rejected" | "approved_for_future_export";
   proposed_values: FieldValues;
+  before_values: FieldValues;
   approved_field_paths: string[];
   evidence: string[];
   decisions: Array<{
@@ -134,6 +145,7 @@ const fromRow = (row: CandidateRow): ReviewCandidate => ({
   revision: row.revision,
   status: row.status === "approved_for_future_export" ? "approved" : row.status,
   proposedValues: row.proposed_values,
+  beforeValues: row.before_values,
   approvedValues: row.status === "approved_for_future_export"
     ? Object.fromEntries(row.approved_field_paths.map((field) => [field, row.proposed_values[field]!]))
     : undefined,
@@ -154,6 +166,7 @@ const candidateSelect = `
     state.revision,
     state.status,
     revision.proposed_values,
+    revision.before_values,
     state.approved_field_paths,
     coalesce(revision.provenance->'evidence', '[]'::jsonb) as evidence,
     coalesce((
@@ -193,6 +206,36 @@ export class NeonReviewRepository {
     return rows.map(fromRow);
   }
 
+  async seededResource(resourceId: string): Promise<{ id: string; payload: Record<string, unknown> } | undefined> {
+    const rows = await this.#query<{ id: string; source_payload: Record<string, unknown> }>(`
+      select resource.id, snapshot.source_payload
+      from review_workspace.resources resource
+      join lateral (
+        select source_payload from review_workspace.resource_snapshots
+        where resource_id = resource.id order by imported_at desc limit 1
+      ) snapshot on true
+      where resource.id = $1::uuid
+    `, [resourceId]);
+    const row = rows[0];
+    return row && { id: row.id, payload: row.source_payload };
+  }
+
+  async assertBaselineReady(): Promise<void> {
+    const rows = await this.#query<{
+      outcome: "succeeded" | "failed";
+      source_row_count: number;
+      inserted_snapshot_count: number;
+      unchanged_count: number;
+      skipped_count: number;
+      failed_count: number;
+    }>(`select outcome, source_row_count, inserted_snapshot_count, unchanged_count, skipped_count, failed_count
+        from review_workspace.baseline_import_receipts order by recorded_at desc limit 1`);
+    const row = rows[0];
+    if (!row || !isReconciledBaseline({ outcome: row.outcome, sourceRows: Number(row.source_row_count), insertedSnapshots: Number(row.inserted_snapshot_count), unchanged: Number(row.unchanged_count), skipped: Number(row.skipped_count), failed: Number(row.failed_count) })) {
+      throw new Error("A reconciled baseline-import receipt is required before web verification.");
+    }
+  }
+
   async decide(input: { candidateId: string; expectedRevision: number; reviewerSubject: string; action: CandidateAction; fields?: string[]; reason: string }): Promise<ReviewCandidate> {
     requiredReason(input.reason);
     if (input.action === "approved" && !input.fields?.length) throw new Error("Approval requires at least one proposed field.");
@@ -211,6 +254,7 @@ export class NeonReviewRepository {
         where state.candidate_id = $3::uuid
           and state.candidate_revision_id = revision.id
           and state.revision = $4
+          and state.status in ('staged', 'deferred')
           and exists (select 1 from authorized)
           and ($1 <> 'approved' or (
             jsonb_typeof(revision.proposed_values) = 'object'
@@ -229,6 +273,112 @@ export class NeonReviewRepository {
       await requireWorkspaceRole(input.reviewerSubject, "reviewer");
       throw new RevisionConflictError();
     }
+    return (await this.get(rows[0].id))!;
+  }
+
+  async supersede(input: { candidateId: string; expectedRevision: number; proposedValues: FieldValues; actorSubject: string; reason: string }): Promise<ReviewCandidate> {
+    requiredReason(input.reason);
+    if (!Object.keys(input.proposedValues).length || Object.values(input.proposedValues).some((value) => !value.trim())) throw new Error("An edited proposal requires non-empty field values.");
+    const rows = await this.#query<{ id: string }>(`
+      with authorized as (
+        select 1 from review_workspace.reviewer_access where subject = $4 and role = 'reviewer' and revoked_at is null
+      ), previous as (
+        select state.candidate_id, state.candidate_revision_id, revision.resource_id, revision.run_id,
+          revision.kind, revision.before_values, revision.provenance
+        from review_workspace.candidate_current_state state
+        join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
+        where state.candidate_id = $1::uuid and state.revision = $2
+          and state.status in ('staged', 'deferred') and exists (select 1 from authorized)
+      ), inserted_revision as (
+        insert into review_workspace.candidate_revisions
+          (resource_id, run_id, kind, before_values, proposed_values, provenance, supersedes_candidate_revision_id)
+        select resource_id, run_id, kind, before_values, $3::jsonb,
+          provenance || jsonb_build_object('reviewerEdit', jsonb_build_object('subject', $4, 'reason', $5)), candidate_revision_id
+        from previous returning id
+      ), linked_snapshot as (
+        insert into review_workspace.candidate_revision_snapshot_links (candidate_revision_id, resource_snapshot_id)
+        select inserted_revision.id, link.resource_snapshot_id
+        from inserted_revision join previous on true
+        join review_workspace.candidate_revision_snapshot_links link on link.candidate_revision_id = previous.candidate_revision_id
+      ), updated as (
+        update review_workspace.candidate_current_state state
+        set candidate_revision_id = inserted_revision.id, revision = state.revision + 1,
+            status = 'staged', approved_field_paths = '[]'::jsonb, updated_at = now()
+        from inserted_revision, previous
+        where state.candidate_id = previous.candidate_id and state.candidate_revision_id = previous.candidate_revision_id
+        returning state.candidate_id as id
+      ) select id from updated
+    `, [input.candidateId, input.expectedRevision, JSON.stringify(input.proposedValues), input.actorSubject, input.reason.trim()]);
+    if (!rows[0]) {
+      await requireWorkspaceRole(input.actorSubject, "reviewer");
+      throw new RevisionConflictError();
+    }
+    return (await this.get(rows[0].id))!;
+  }
+
+  async stageVerification(input: {
+    resourceId: string;
+    runId: string;
+    kind: "update" | "closure_review" | "new_resource";
+    beforeValues: FieldValues;
+    proposedValues: FieldValues;
+    observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: unknown }>;
+  }): Promise<ReviewCandidate> {
+    const observations = input.observations.map(({ excerpt, ...observation }) => ({ ...observation, excerpt: excerpt && redactEvidence(excerpt).slice(0, 6000) }));
+    const provenance = {
+      evidence: observations.map((observation) => observation.sourceUrl ?? `${observation.provider}: ${observation.state}`),
+      observations
+    };
+    const rows = await this.#query<{ id: string }>(`
+      with locked as (
+        select pg_advisory_xact_lock(hashtextextended($1::text, 0))
+      ), snapshot as (
+        select snapshots.id from review_workspace.resource_snapshots snapshots
+        cross join locked
+        where snapshots.resource_id = $1::uuid order by snapshots.imported_at desc limit 1
+      ), previous as (
+        select state.candidate_id, state.candidate_revision_id, state.revision
+        from review_workspace.candidate_current_state state
+        join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
+        cross join locked
+        where revision.resource_id = $1::uuid
+        order by state.updated_at desc limit 1
+      ), observations as (
+        insert into review_workspace.source_observations
+          (resource_id, run_id, provider, observation_key, observed_at, extracted_values, retrieval_metadata)
+        select $1::uuid, $2::uuid, entry->>'provider',
+          coalesce(entry->>'sourceUrl', entry->>'provider') || ':' || (entry->>'observedAt'),
+          (entry->>'observedAt')::timestamptz,
+          coalesce(entry->'values', '{}'::jsonb),
+          jsonb_build_object('state', entry->>'state', 'excerpt', entry->>'excerpt', 'sourceUrl', entry->>'sourceUrl')
+        from jsonb_array_elements($6::jsonb) entry
+        on conflict (provider, observation_key, observed_at) do nothing
+      ), inserted_revision as (
+        insert into review_workspace.candidate_revisions
+          (resource_id, run_id, kind, before_values, proposed_values, provenance, supersedes_candidate_revision_id)
+        select $1::uuid, $2::uuid, $3, $4::jsonb, $5::jsonb, $7::jsonb, previous.candidate_revision_id
+        from snapshot left join previous on true
+        returning id
+      ), linked_snapshot as (
+        insert into review_workspace.candidate_revision_snapshot_links (candidate_revision_id, resource_snapshot_id)
+        select inserted_revision.id, snapshot.id from inserted_revision cross join snapshot
+      ), updated_state as (
+        update review_workspace.candidate_current_state state
+        set candidate_revision_id = inserted_revision.id, revision = state.revision + 1,
+            status = 'staged', approved_field_paths = '[]'::jsonb, updated_at = now()
+        from inserted_revision
+        where state.candidate_id = (select candidate_id from previous)
+        returning state.candidate_id as id
+      ), inserted_state as (
+        insert into review_workspace.candidate_current_state
+          (candidate_revision_id, external_id, revision, status)
+        select id, $1, 1, 'staged' from inserted_revision
+        where not exists (select 1 from previous)
+        returning candidate_id as id
+      )
+      select id from updated_state union all select id from inserted_state
+    `, [input.resourceId, input.runId, input.kind, JSON.stringify(input.beforeValues), JSON.stringify(input.proposedValues), JSON.stringify(observations), JSON.stringify(provenance)]);
+    if (!rows[0]) throw new Error("A seeded resource snapshot is required before staging review evidence.");
     return (await this.get(rows[0].id))!;
   }
 

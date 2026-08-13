@@ -98,3 +98,17 @@ test("baseline import receipts contain aggregate-only append-only outcomes", () 
   assert.match(schema, /before update or delete on review_workspace\.baseline_import_receipts/i);
   assert.match(schema, /grant select, insert on review_workspace\.baseline_import_receipts/i);
 });
+
+test("Azure export artifacts remain append-only and contain no production credential", () => {
+  const schema = migration("005_azure_exports.sql");
+  assert.match(schema, /create table review_workspace\.azure_export_artifacts/i);
+  assert.match(schema, /blob_reference text not null/i);
+  assert.match(schema, /before update or delete on review_workspace\.azure_export_artifacts/i);
+  assert.doesNotMatch(schema, /production_database_url/i);
+});
+
+test("candidate staging serializes concurrent revisions for one resource", () => {
+  const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
+  assert.match(repository, /pg_advisory_xact_lock\(hashtextextended\(\$1::text, 0\)\)/);
+  assert.match(repository, /cross join locked/);
+});

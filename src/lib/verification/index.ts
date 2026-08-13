@@ -1,5 +1,6 @@
 import { normalizeEvidenceText, type CapturedObservation, type EvidenceValues } from "../retrieval/types.ts";
 import { scoreEvidence, type Scores } from "../scoring/index.ts";
+import { approvedCategory } from "../taxonomy/categories.ts";
 
 export type VerificationState = "no_change" | "candidate_update" | "conflict" | "unable_to_verify" | "potential_new_resource";
 
@@ -68,20 +69,21 @@ export const verifyResource = (input: {
   const observations = input.lead ? [...input.observations, input.lead] : input.observations;
   const resource = input.resource;
   const scores = scoreEvidence(resource ?? { name: input.lead?.values?.name ?? "" }, observations);
+  const advisory = input.advisory && { ...input.advisory, suggestedCategory: approvedCategory(input.advisory.suggestedCategory) };
   const base = {
     resourceId: resource?.id ?? null,
     diffs: [] as FieldDiff[],
     proposedValues: {} as EvidenceValues,
     observations,
     scores,
-    advisory: input.advisory
+    advisory
   };
 
   if (observations.some((observation) => unavailable.has(observation.state))) {
     return { ...base, state: "unable_to_verify", reasons: ["A required source was blocked, timed out, or rate limited; no status delta was staged."] };
   }
 
-  if (!resource && input.lead?.provider === "local_directory" && input.lead.state === "success") {
+  if (!resource && (input.lead?.provider === "local_directory" || input.lead?.provider === "trusted_directory") && input.lead.state === "success") {
     return { ...base, state: "potential_new_resource", proposedValues: input.lead.values ?? {}, reasons: ["Trusted directory lead did not match a known resource identity."] };
   }
 
@@ -89,7 +91,7 @@ export const verifyResource = (input: {
     return { ...base, state: "unable_to_verify", reasons: ["No reference resource was supplied for identity matching."] };
   }
 
-  if (input.lead?.provider === "local_directory" && !matchesIdentity(resource, input.lead.values)) {
+  if ((input.lead?.provider === "local_directory" || input.lead?.provider === "trusted_directory") && !matchesIdentity(resource, input.lead.values)) {
     return { ...base, state: "potential_new_resource", proposedValues: input.lead.values ?? {}, reasons: ["Trusted directory lead did not match the known resource identity."] };
   }
 

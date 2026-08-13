@@ -9,12 +9,15 @@
     "test": "node --test tests/*.test.ts",
     "check": "npm run typecheck && npm test",
     "build": "next build",
+    "apply:review-migrations": "psql \"$REVIEW_DATABASE_URL\" -v ON_ERROR_STOP=1 -f migrations/001_review_workspace.sql -f migrations/002_categories.sql -f migrations/003_neon_review_persistence.sql -f migrations/004_baseline_imports.sql -f migrations/005_azure_exports.sql -f migrations/006_expanded_categories.sql",
     "apply:baseline-import-migration": "psql \"$REVIEW_DATABASE_URL\" -v ON_ERROR_STOP=1 -f migrations/004_baseline_imports.sql",
+    "profile:cbo-source": "node scripts/profile-cbo-source.ts",
     "import:cbo-baseline": "node scripts/import-cbo-baseline.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.7.4",
     "@neondatabase/serverless": "^1.0.2",
+    "@vercel/blob": "^2.8.0",
     "next": "^16.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
