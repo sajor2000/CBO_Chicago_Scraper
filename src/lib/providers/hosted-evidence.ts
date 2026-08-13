@@ -28,7 +28,7 @@ export function hostedEvidenceFromEnv() {
   const googleKey = process.env.GOOGLE_MAPS_API_KEY;
   const tavilyKey = process.env.TAVILY_API_KEY;
   if (!firecrawlKey || !googleKey || !tavilyKey) throw new Error("Firecrawl, Google Places, and Tavily must be configured before a hosted run can execute.");
-  azureOpenAiScorerFromEnv();
+  const scorer = azureOpenAiScorerFromEnv();
   const allowlist = (process.env.FIRECRAWL_INTERACT_ALLOWLIST ?? "").split(",").map((domain) => domain.trim()).filter(Boolean);
   return {
     collect: (resource: ReferenceResource) => collectHostedEvidence({
@@ -40,7 +40,7 @@ export function hostedEvidenceFromEnv() {
       directory: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT ? new TrustedDirectoryClient({ endpoint: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT }) : undefined
     }),
     score: async (resource: ReferenceResource, observations: CapturedObservation[]) => {
-      const score = await azureOpenAiScorerFromEnv().score({ name: resource.name, address: resource.address, evidence: observations.map((observation) => observation.excerpt ?? observation.sourceUrl ?? `${observation.provider}: ${observation.state}`).join("\n") });
+      const score = await scorer.score({ name: resource.name, address: resource.address, evidence: observations.map((observation) => observation.excerpt ?? observation.sourceUrl ?? `${observation.provider}: ${observation.state}`).join("\n") });
       return { suggestedCategory: score.suggestedCategory, rationale: score.rationale };
     }
   };

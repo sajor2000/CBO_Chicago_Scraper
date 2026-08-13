@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireWorkspaceRole, WorkspaceAuthorizationError, WorkspaceTargetError } from "../../../lib/db.ts";
 import { runRegistry } from "../../../lib/runs/index.ts";
+import { reviewRepository } from "../../../lib/repositories/review.ts";
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -8,6 +9,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
     await requireWorkspaceRole(userId, "operator");
     const body = await request.json() as { idempotencyKey: string; selection: string[]; budget: number };
+    await reviewRepository.assertBaselineReady();
     return Response.json(await runRegistry.launch(body), { status: 202 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Run launch failed." }, { status: error instanceof WorkspaceAuthorizationError ? 403 : error instanceof WorkspaceTargetError ? 503 : 400 });

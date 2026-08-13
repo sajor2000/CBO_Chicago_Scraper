@@ -25,6 +25,13 @@ export interface ReviewDecisionRecord {
   at: string;
 }
 
+export type BaselineReceipt = { outcome: "succeeded" | "failed"; sourceRows: number; insertedSnapshots: number; unchanged: number; skipped: number; failed: number };
+
+export const isReconciledBaseline = (receipt: BaselineReceipt) => receipt.outcome === "succeeded"
+  && receipt.failed === 0
+  && receipt.skipped === 0
+  && receipt.sourceRows === receipt.insertedSnapshots + receipt.unchanged;
+
 export class RevisionConflictError extends Error {
   constructor() {
     super("Candidate revision has changed; refresh before deciding.");
@@ -210,6 +217,22 @@ export class NeonReviewRepository {
     `, [resourceId]);
     const row = rows[0];
     return row && { id: row.id, payload: row.source_payload };
+  }
+
+  async assertBaselineReady(): Promise<void> {
+    const rows = await this.#query<{
+      outcome: "succeeded" | "failed";
+      source_row_count: number;
+      inserted_snapshot_count: number;
+      unchanged_count: number;
+      skipped_count: number;
+      failed_count: number;
+    }>(`select outcome, source_row_count, inserted_snapshot_count, unchanged_count, skipped_count, failed_count
+        from review_workspace.baseline_import_receipts order by recorded_at desc limit 1`);
+    const row = rows[0];
+    if (!row || !isReconciledBaseline({ outcome: row.outcome, sourceRows: Number(row.source_row_count), insertedSnapshots: Number(row.inserted_snapshot_count), unchanged: Number(row.unchanged_count), skipped: Number(row.skipped_count), failed: Number(row.failed_count) })) {
+      throw new Error("A reconciled baseline-import receipt is required before web verification.");
+    }
   }
 
   async decide(input: { candidateId: string; expectedRevision: number; reviewerSubject: string; action: CandidateAction; fields?: string[]; reason: string }): Promise<ReviewCandidate> {
