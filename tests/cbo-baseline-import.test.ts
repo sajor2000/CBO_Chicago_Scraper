@@ -6,54 +6,37 @@ import {
   contentSha256,
   preflightRows,
   readSourceRows,
-  sourceConfigFromEnv,
-  validateConfig
+  sourceConfigFromEnv
 } from "../src/lib/imports/cbo-baseline.ts";
 
-test("baseline configuration rejects an unqualified table before any database access", () => {
+test("baseline configuration requires a named source profile before any database access", () => {
   assert.throws(
     () => sourceConfigFromEnv({
-      SOURCE_DATABASE_URL: "postgres://private",
-      CBO_SOURCE_NAME: "chicagohealthmap",
-      CBO_SOURCE_TABLE: "resources",
-      CBO_SOURCE_ID_COLUMN: "id",
-      CBO_SOURCE_FIELDS: "name,address"
+      SOURCE_DATABASE_URL: "postgres://private"
     }),
     (error: Error) => error instanceof CboBaselineImportError && !error.message.includes("postgres")
   );
 });
 
-test("baseline configuration permits only valid, unique public field identifiers", () => {
+test("baseline configuration rejects an unknown profile before any database access", () => {
   assert.throws(
-    () => validateConfig({
-      databaseUrl: "postgres://private",
-      sourceName: "chicagohealthmap",
-      table: "public.resources",
-      idColumn: "resource_id",
-      fields: ["name", "name"]
+    () => sourceConfigFromEnv({
+      SOURCE_DATABASE_URL: "postgres://private",
+      CBO_SOURCE_PROFILE: "operator-expanded-fields"
     }),
-    CboBaselineImportError
+    (error: Error) => error instanceof CboBaselineImportError && !error.message.includes("postgres")
   );
-  assert.throws(
-    () => validateConfig({
-      databaseUrl: "postgres://private",
-      sourceName: "   ",
-      table: "public.resources",
-      idColumn: "resource_id",
-      fields: ["name"]
-    }),
-    CboBaselineImportError
-  );
-  assert.throws(
-    () => validateConfig({
-      databaseUrl: "postgres://private",
-      sourceName: "chicagohealthmap",
-      table: "pg_catalog.pg_class",
-      idColumn: "oid",
-      fields: ["relname"]
-    }),
-    CboBaselineImportError
-  );
+});
+
+test("the approved profile ignores operator field expansion", () => {
+  const config = sourceConfigFromEnv({
+    SOURCE_DATABASE_URL: "postgres://private",
+    CBO_SOURCE_PROFILE: "chicagohealthmap-public-v1",
+    CBO_SOURCE_FIELDS: "internal_notes,phone"
+  });
+  assert.equal(config.table, "public.cbo_public_directory_v1");
+  assert.ok(!config.fields.includes("internal_notes"));
+  assert.ok(!config.fields.includes("phone"));
 });
 
 test("canonical JSON gives equivalent source objects the same content receipt", () => {
@@ -82,18 +65,20 @@ test("source projection uses literal allowlisted JSON keys and maps source rows"
   const query = {
     query: async (sql: string) => {
       queries.push(sql);
-      if (sql.includes("pg_catalog.pg_class")) return [{ is_base_table: true }];
-      if (sql.includes("information_schema.columns")) return [{ column_name: "resource_id" }, { column_name: "name" }];
+      if (sql.includes("pg_catalog.pg_class")) return [{ is_profile_relation: true }];
+      if (sql.includes("information_schema.columns")) return [
+        { column_name: "source_id" }, { column_name: "organization_name" }, { column_name: "location_name" },
+        { column_name: "full_address" }, { column_name: "city" }, { column_name: "state" }, { column_name: "zip_code" },
+        { column_name: "location_type" }, { column_name: "website" }, { column_name: "latitude" }, { column_name: "longitude" },
+        { column_name: "description" }, { column_name: "source_relation" }
+      ];
       return [{ source_id: "42", payload: { name: "Example CBO" } }];
     }
   };
-  const rows = await readSourceRows({
-    databaseUrl: "postgres://private",
-    sourceName: "chicagohealthmap",
-    table: "public.resources",
-    idColumn: "resource_id",
-    fields: ["name"]
-  }, query as never);
+  const rows = await readSourceRows(sourceConfigFromEnv({
+    SOURCE_DATABASE_URL: "postgres://private",
+    CBO_SOURCE_PROFILE: "chicagohealthmap-public-v1"
+  }), query as never);
   assert.deepEqual(rows, [{ sourceId: "42", payload: { name: "Example CBO" } }]);
-  assert.match(queries[2], /jsonb_build_object\('name', "name"\)/);
+  assert.match(queries[2], /jsonb_build_object\('organization_name', "organization_name",/);
 });
