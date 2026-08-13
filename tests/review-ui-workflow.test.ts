@@ -26,8 +26,9 @@ test("operator controls prevent a second launch while a pilot request is in flig
   const controls = readFileSync(new URL("../src/app/review/run-controls.tsx", import.meta.url), "utf8");
   assert.match(controls, /const \[busy, setBusy\] = useState\(false\)/);
   assert.match(controls, /disabled=\{!selected\.length \|\| busy\}/);
-  assert.match(controls, /body: JSON\.stringify\(\{ limit: selected\.length \}\)/);
-  assert.match(controls, /candidatesStaged/);
+  assert.match(controls, /body: JSON\.stringify\(\{ limit: 1 \}\)/);
+  assert.match(controls, /Cancel run/);
+  assert.match(controls, /window\.location\.assign\("\/review"\)/);
 });
 
 test("review queue mounts operator controls and human-readable candidate rows", () => {

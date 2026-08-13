@@ -1,6 +1,6 @@
 import { UserButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
-import { hasWorkspaceRole, requireWorkspaceRole, WorkspaceAuthorizationError, WorkspaceTargetError } from "../../lib/db.ts";
+import { hasWorkspaceRole, WorkspaceTargetError } from "../../lib/db.ts";
 import { reviewRepository } from "../../lib/repositories/review.ts";
 import { RunControls } from "./run-controls.tsx";
 
@@ -34,20 +34,28 @@ export default async function ReviewQueuePage() {
     return <AuthGate title="Sign in required" body="Open the review workspace with a ChicagoHealthMap Clerk account." href="/sign-in" linkLabel="Go to sign in" />;
   }
 
+  let isReviewer = false;
+  let isOperator = false;
   try {
-    await requireWorkspaceRole(userId, "reviewer");
+    isReviewer = await hasWorkspaceRole(userId, "reviewer");
+    isOperator = await hasWorkspaceRole(userId, "operator");
   } catch (error) {
-    if (error instanceof WorkspaceAuthorizationError) {
-      return <AuthGate title="Access denied" body="Your account is signed in but is not granted reviewer access in the dedicated review workspace." href="/sign-in" linkLabel="Switch account" />;
-    }
     if (error instanceof WorkspaceTargetError) {
       return <AuthGate title="Workspace unavailable" body="REVIEW_DATABASE_URL must point at the dedicated review workspace before the queue can load." href="/review" linkLabel="Retry" />;
     }
     throw error;
   }
 
-  const isOperator = await hasWorkspaceRole(userId, "operator");
-  const candidates = await reviewRepository.list();
+  if (!isReviewer && !isOperator) {
+    return <AuthGate
+      title="Access denied"
+      body="Your account is signed in but is not granted reviewer or operator access in the dedicated review workspace."
+      href="/sign-in"
+      linkLabel="Switch account"
+    />;
+  }
+
+  const candidates = isReviewer ? await reviewRepository.list() : [];
   let resources: Array<{ id: string; name: string }> = [];
   let baselineError: string | undefined;
   if (isOperator) {
@@ -62,8 +70,12 @@ export default async function ReviewQueuePage() {
   return <main className="work-surface">
     <AppHeader />
     <section className="page-intro">
-      <h1>Reviewer queue</h1>
-      <p>Review staged evidence and approve only the supported field changes. Nothing here publishes to ChicagoHealthMap production.</p>
+      <h1>{isReviewer ? "Reviewer queue" : "Operator pilot"}</h1>
+      <p>
+        {isReviewer
+          ? "Review staged evidence and approve only the supported field changes. Nothing here publishes to ChicagoHealthMap production."
+          : "Launch a bounded evidence check. You need a reviewer grant to open staged candidates."}
+      </p>
     </section>
 
     {isOperator && (
@@ -75,33 +87,39 @@ export default async function ReviewQueuePage() {
         : <RunControls resources={resources} />
     )}
 
-    <section className="queue-panel" aria-labelledby="queue-title">
-      <h2 id="queue-title">Staged candidates</h2>
-      {candidates.length ? (
-        <ul className="candidate-list">
-          {candidates.map((candidate) => {
-            const fields = Object.keys(candidate.proposedValues);
-            const preview = fields.slice(0, 2).map((field) => {
-              const before = candidate.beforeValues?.[field];
-              const after = candidate.proposedValues[field];
-              return before ? `${fieldLabel(field)}: ${before} → ${after}` : `${fieldLabel(field)}: ${after}`;
-            }).join(" · ");
-            return <li key={candidate.id} className="candidate-row">
-              <div className="candidate-main">
-                <a href={`/review/${candidate.id}`}>{candidate.resourceName ?? `Candidate ${candidate.id.slice(0, 8)}`}</a>
-                <span className={`status-chip status-${candidate.status}`}>{statusLabel(candidate.status)}</span>
-              </div>
-              <p className="candidate-meta">
-                {candidate.kind === "closure_review" && !fields.length
-                  ? "Conflict with no proposed field change — open to review evidence."
-                  : (preview || "No proposed fields")}
-              </p>
-            </li>;
-          })}
-        </ul>
-      ) : (
-        <p className="empty-queue">No staged candidates yet.{isOperator ? " Launch a small evidence check above when the baseline is ready." : " An operator must stage evidence before items appear here."}</p>
-      )}
-    </section>
+    {isReviewer ? (
+      <section className="queue-panel" aria-labelledby="queue-title">
+        <h2 id="queue-title">Staged candidates</h2>
+        {candidates.length ? (
+          <ul className="candidate-list">
+            {candidates.map((candidate) => {
+              const fields = Object.keys(candidate.proposedValues);
+              const preview = fields.slice(0, 2).map((field) => {
+                const before = candidate.beforeValues?.[field];
+                const after = candidate.proposedValues[field];
+                return before ? `${fieldLabel(field)}: ${before} → ${after}` : `${fieldLabel(field)}: ${after}`;
+              }).join(" · ");
+              return <li key={candidate.id} className="candidate-row">
+                <div className="candidate-main">
+                  <a href={`/review/${candidate.id}`}>{candidate.resourceName ?? `Candidate ${candidate.id.slice(0, 8)}`}</a>
+                  <span className={`status-chip status-${candidate.status}`}>{statusLabel(candidate.status)}</span>
+                </div>
+                <p className="candidate-meta">
+                  {candidate.kind === "closure_review" && !fields.length
+                    ? "Conflict with no proposed field change — open to review evidence."
+                    : (preview || "No proposed fields")}
+                </p>
+              </li>;
+            })}
+          </ul>
+        ) : (
+          <p className="empty-queue">No staged candidates yet.{isOperator ? " Launch a small evidence check above when the baseline is ready." : " An operator must stage evidence before items appear here."}</p>
+        )}
+      </section>
+    ) : (
+      <section className="queue-panel">
+        <p className="empty-queue">Operator access can launch pilots. Ask an admin for a reviewer grant to open the staged-candidate queue.</p>
+      </section>
+    )}
   </main>;
 }

@@ -77,6 +77,13 @@ export class InMemoryRunRegistry {
     if (run.checkpoint >= run.selection.length || run.report.budgetUsed >= run.budget) run.status = "completed";
   }
 
+  releaseLease(runId: string) {
+    const run = this.#require(runId);
+    if (!this.#claimedRunIds.has(run.id)) return;
+    this.#claimedRunIds.delete(run.id);
+    if (run.status === "running") run.status = "queued";
+  }
+
   cancel(runId: string) {
     const run = this.#require(runId);
     this.#claimedRunIds.delete(run.id);
@@ -261,6 +268,22 @@ export class NeonRunRegistry {
       select run_id from advanced
     `, [runId, leaseToken, JSON.stringify(delta), report.candidatesStaged ?? 0, report.conflicts ?? 0, report.unableToVerify ?? 0, report.providerFailures ?? 0]);
     if (!rows[0]) throw new RunLockError();
+  }
+
+  /** Returns a leased checkpoint to pending so a failed worker cannot strand the run. */
+  async releaseLease(runId: string, leaseToken: string): Promise<void> {
+    await this.#query(`
+      with released as (
+        update review_workspace.run_checkpoints
+        set state = 'pending', lease_token = null, lease_expires_at = null
+        where run_id = $1::uuid and lease_token = $2::uuid and state = 'leased'
+        returning run_id
+      )
+      update review_workspace.run_current_state state
+      set status = case when status in ('cancelled', 'completed') then status else 'queued' end,
+          updated_at = now(), revision = revision + 1
+      where state.run_id = $1::uuid and exists (select 1 from released)
+    `, [runId, leaseToken]);
   }
 
   async cancel(runId: string): Promise<void> {

@@ -10,4 +10,6 @@ test("Clerk middleware runs globally while review pages require authentication",
   assert.match(reviewPage, /Sign in required/);
   assert.match(reviewPage, /RunControls/);
   assert.match(reviewPage, /hasWorkspaceRole\(userId, "operator"\)/);
+  assert.match(reviewPage, /hasWorkspaceRole\(userId, "reviewer"\)/);
+  assert.match(reviewPage, /!isReviewer && !isOperator/);
 });
