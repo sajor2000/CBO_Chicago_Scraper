@@ -138,7 +138,8 @@ flowchart TB
 - **Goal:** Establish the new project/database and a reproducible migration path before importing directory data.
 - **Requirements:** R1, R2, R3, R5; KTD1, KTD3.
 - **Dependencies:** None.
-- **Files:** `migrations/007_cbo_mirror_workspace_core.sql`, `scripts/migrate-review-workspace.ts`, `src/lib/db.ts`, `tests/migration-workspace.test.ts`, `docs/operator-runbook.md`, `.env.example`.
+- **Files:** `migrations/008_cbo_mirror_workspace_core.sql`, `scripts/migrate-review-workspace.ts`, `src/lib/db.ts`, `tests/migration-workspace.test.ts`, `docs/ops/operator-runbook.md`, `.env.example`.
+  - Note: `007_live_verification.sql` now occupies sequence 007; start mirror migrations at 008+.
 - **Approach:**
   1. Add an ordered, checksummed migration runner that validates the target sentinel and fails before applying an unknown, missing, or checksum-mismatched migration.
   2. Provision a clean Neon project manually through its console, bind the sentinel and migration ledger to a provisioned workspace UUID/attestation, and reject a legacy or copied sentinel target.
@@ -157,7 +158,7 @@ flowchart TB
 - **Goal:** Define the exact, reviewed destination DDL for the two source relations without relying on the generic normalized-view profile.
 - **Requirements:** R2, R3, R4, R5; KTD3.
 - **Dependencies:** U1.
-- **Files:** `src/lib/imports/cbo-source-profile.ts`, `scripts/profile-cbo-source.ts`, `sql/mirror/community_resource_locations.sql`, `sql/mirror/wic_locations.sql`, `migrations/008_cbo_mirror_tables.sql`, `tests/cbo-source-profile.test.ts`, `tests/cbo-mirror-contract.test.ts`, `docs/cbo-source-profile.md`.
+- **Files:** `src/lib/imports/cbo-source-profile.ts`, `scripts/profile-cbo-source.ts`, `sql/mirror/community_resource_locations.sql`, `sql/mirror/wic_locations.sql`, `migrations/009_cbo_mirror_tables.sql`, `tests/cbo-source-profile.test.ts`, `tests/cbo-mirror-contract.test.ts`, `docs/data/cbo-source-profile.md`.
 - **Approach:**
   1. Extend the read-only profiler to capture columns, nullability, defaults, primary/unique/check constraints, indexes, geometry typmod/SRID, and row-level ID/geometry aggregates for each named source table.
   2. Emit a non-executable profile and require mirror-owner approval before checking in the two constrained destination DDL artifacts; do not create the former normalized source view on the mirror.
@@ -177,7 +178,7 @@ flowchart TB
 - **Goal:** Copy the two source tables into the new workspace safely, with reproducible reconciliation and no source writes.
 - **Requirements:** R4, R5, R6, R7; KTD2, KTD3, KTD4.
 - **Dependencies:** U1, U2.
-- **Files:** `migrations/009_cbo_mirror_refresh.sql`, `src/lib/imports/cbo-mirror-refresh.ts`, `scripts/refresh-cbo-mirror.ts`, `src/lib/domain/review-workspace.ts`, `src/lib/runs/cron.ts`, `tests/cbo-mirror-refresh.test.ts`, `tests/cbo-mirror-integration.test.ts`, `tests/cron-release-gate.test.ts`, `docs/operator-runbook.md`.
+- **Files:** `migrations/010_cbo_mirror_refresh.sql`, `src/lib/imports/cbo-mirror-refresh.ts`, `scripts/refresh-cbo-mirror.ts`, `src/lib/domain/review-workspace.ts`, `src/lib/runs/cron.ts`, `tests/cbo-mirror-refresh.test.ts`, `tests/cbo-mirror-integration.test.ts`, `tests/cron-release-gate.test.ts`, `docs/ops/operator-runbook.md`.
 - **Approach:**
   1. After destination attestation, append a refresh-attempt record before source extraction; source access is through the separate read-only CLI/job role, never a Vercel route.
   2. Read both tables under one read-only repeatable-read source snapshot (or an explicit source snapshot token), validate the captured contract, stable IDs, geometry, counts, and deterministic content fingerprints, then append a redacted failed terminal manifest on any failure that can still reach the workspace.
