@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { processVerificationCheckpoint } from "../src/lib/verification/run-checkpoint.ts";
+
+const resource = { id: "r1", name: "Example Pantry", address: "1 Old St" };
+const observedAt = "2026-08-13T00:00:00Z";
+
+test("a corroborated update stages its exact before value", async () => {
+  let staged: unknown;
+  const output = await processVerificationCheckpoint({
+    resource,
+    observations: [
+      { provider: "firecrawl", state: "success", observedAt, values: { address: "2 New St" } },
+      { provider: "google_places", state: "success", observedAt, values: { address: "2 New St" } }
+    ],
+    stage: async (input) => { staged = input; }
+  });
+  assert.equal(output.result.state, "candidate_update");
+  assert.deepEqual(staged, { kind: "update", beforeValues: { address: "1 Old St" }, proposedValues: { address: "2 New St" }, observations: output.result.observations });
+});
+
+test("a Google-only closure is staged for review without a closed field", async () => {
+  let staged: { kind: string; proposedValues: Record<string, string> } | undefined;
+  const output = await processVerificationCheckpoint({
+    resource,
+    observations: [{ provider: "google_places", state: "success", observedAt, values: { businessStatus: "closed" } }],
+    stage: async (input) => { staged = input; }
+  });
+  assert.equal(output.result.state, "conflict");
+  assert.equal(staged?.kind, "closure_review");
+  assert.deepEqual(staged?.proposedValues, {});
+});

@@ -15,5 +15,5 @@ export default async function CandidateReviewPage({ params }: { params: Promise<
   }
   const candidate = await reviewRepository.get((await params).candidateId);
   if (!candidate) return <main><h1>Candidate not found</h1></main>;
-  return <main><h1>Candidate {candidate.id}</h1><p>Status: {candidate.status} · revision {candidate.revision}</p><h2>Proposed field changes</h2><dl>{Object.entries(candidate.proposedValues).map(([field, value]) => <Fragment key={field}><dt>{field}</dt><dd>{value}</dd></Fragment>)}</dl><h2>Evidence</h2><ul>{candidate.evidence.map((item) => <li key={item}>{item}</li>)}</ul><ReviewActions candidateId={candidate.id} expectedRevision={candidate.revision} proposedValues={candidate.proposedValues} /></main>;
+  return <main><h1>Candidate {candidate.id}</h1><p>Status: {candidate.status} · revision {candidate.revision}</p><h2>Proposed field changes</h2><dl>{Object.entries(candidate.proposedValues).map(([field, value]) => <Fragment key={field}><dt>{field}</dt><dd>Current: {candidate.beforeValues?.[field] ?? "Not recorded"}<br />Proposed: {value}</dd></Fragment>)}</dl><h2>Evidence</h2><ul>{candidate.evidence.map((item) => <li key={item}>{item}</li>)}</ul><ReviewActions candidateId={candidate.id} expectedRevision={candidate.revision} proposedValues={candidate.proposedValues} /></main>;
 }

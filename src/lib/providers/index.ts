@@ -1,20 +1,9 @@
-export type ProviderName = "firecrawl" | "google_places" | "tavily" | "irs" | "trusted_directory";
-export type CaptureState = "success" | "no_result" | "blocked" | "timeout" | "rate_limited" | "malformed";
+import type { CapturedObservation, Provider, RetrievalState } from "../retrieval/types.ts";
 
-export type ProviderCapture = {
-  provider: ProviderName;
-  state: CaptureState;
-  observedAt: string;
-  sourceUrl?: string;
-  excerpt?: string;
-  values?: {
-    name?: string;
-    address?: string;
-    phone?: string;
-    url?: string;
-    businessStatus?: "open" | "closed" | "unknown";
-  };
-};
+export type ProviderName = Provider;
+export type CaptureState = RetrievalState;
+
+export type ProviderCapture = CapturedObservation;
 
 type Fetch = typeof fetch;
 type Json = Record<string, unknown>;

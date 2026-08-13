@@ -83,7 +83,7 @@ export const verifyResource = (input: {
     return { ...base, state: "unable_to_verify", reasons: ["A required source was blocked, timed out, or rate limited; no status delta was staged."] };
   }
 
-  if (!resource && input.lead?.provider === "local_directory" && input.lead.state === "success") {
+  if (!resource && (input.lead?.provider === "local_directory" || input.lead?.provider === "trusted_directory") && input.lead.state === "success") {
     return { ...base, state: "potential_new_resource", proposedValues: input.lead.values ?? {}, reasons: ["Trusted directory lead did not match a known resource identity."] };
   }
 
@@ -91,7 +91,7 @@ export const verifyResource = (input: {
     return { ...base, state: "unable_to_verify", reasons: ["No reference resource was supplied for identity matching."] };
   }
 
-  if (input.lead?.provider === "local_directory" && !matchesIdentity(resource, input.lead.values)) {
+  if ((input.lead?.provider === "local_directory" || input.lead?.provider === "trusted_directory") && !matchesIdentity(resource, input.lead.values)) {
     return { ...base, state: "potential_new_resource", proposedValues: input.lead.values ?? {}, reasons: ["Trusted directory lead did not match the known resource identity."] };
   }
 
