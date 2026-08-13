@@ -7,7 +7,7 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 export type CandidateKind = "update" | "new_resource" | "closure_review";
-export type ReviewDecision = "approved" | "rejected" | "needs_information";
+export type ReviewDecision = "approved" | "rejected" | "deferred";
 export type PublishOutcome = "published" | "failed" | "rolled_back";
 
 export interface ResourceSnapshot {

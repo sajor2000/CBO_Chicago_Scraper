@@ -33,13 +33,13 @@ const copy = (run: VerificationRun) => structuredClone(run);
 export class InMemoryRunRegistry {
   #runs = new Map<string, VerificationRun>();
   #byIdempotency = new Map<string, string>();
-  #claimedRunId?: string;
+  #claimedRunIds = new Set<string>();
   #nextId = 1;
 
   launch(input: { idempotencyKey: string; selection: string[]; budget: number }): VerificationRun {
     const existingId = this.#byIdempotency.get(input.idempotencyKey);
     if (existingId) return copy(this.#runs.get(existingId)!);
-    if (!input.idempotencyKey || input.budget < 1) throw new Error("A positive budget and idempotency key are required.");
+    if (!input.idempotencyKey || input.budget < 1 || input.selection.length > 100) throw new Error("A positive budget, idempotency key, and at most 100 selected resources are required.");
     const run: VerificationRun = { id: `run-${this.#nextId++}`, idempotencyKey: input.idempotencyKey, selection: [...input.selection], budget: input.budget, checkpoint: 0, status: "queued", report: blankReport() };
     this.#runs.set(run.id, run);
     this.#byIdempotency.set(run.idempotencyKey, run.id);
@@ -54,30 +54,30 @@ export class InMemoryRunRegistry {
   claimNext(runId: string): { resourceId: string; checkpoint: number } | undefined {
     const run = this.#require(runId);
     if (run.status === "cancelled" || run.status === "completed") return undefined;
-    if (this.#claimedRunId) throw new RunLockError();
+    if (this.#claimedRunIds.has(run.id)) throw new RunLockError();
     if (run.checkpoint >= run.selection.length || run.report.budgetUsed >= run.budget) {
       run.status = "completed";
       return undefined;
     }
     run.status = "running";
-    this.#claimedRunId = run.id;
+    this.#claimedRunIds.add(run.id);
     return { resourceId: run.selection[run.checkpoint]!, checkpoint: run.checkpoint };
   }
 
   completeCheckpoint(runId: string, report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">> = {}) {
     const run = this.#require(runId);
-    if (this.#claimedRunId !== run.id) throw new RunLockError();
+    if (!this.#claimedRunIds.has(run.id)) throw new RunLockError();
     run.checkpoint += 1;
     run.report.recordsChecked += 1;
     run.report.budgetUsed += 1;
     for (const key of ["candidatesStaged", "conflicts", "unableToVerify", "providerFailures"] as const) run.report[key] += report[key] ?? 0;
-    this.#claimedRunId = undefined;
+    this.#claimedRunIds.delete(run.id);
     if (run.checkpoint >= run.selection.length || run.report.budgetUsed >= run.budget) run.status = "completed";
   }
 
   cancel(runId: string) {
     const run = this.#require(runId);
-    if (this.#claimedRunId === run.id) this.#claimedRunId = undefined;
+    this.#claimedRunIds.delete(run.id);
     run.status = "cancelled";
   }
 

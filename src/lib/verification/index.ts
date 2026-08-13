@@ -1,4 +1,4 @@
-import type { CapturedObservation, EvidenceValues } from "../retrieval/types.ts";
+import { normalizeEvidenceText, type CapturedObservation, type EvidenceValues } from "../retrieval/types.ts";
 import { scoreEvidence, type Scores } from "../scoring/index.ts";
 
 export type VerificationState = "no_change" | "candidate_update" | "conflict" | "unable_to_verify" | "potential_new_resource";
@@ -37,8 +37,7 @@ export interface VerificationResult {
   advisory: AiAdvisory | undefined;
 }
 
-const normalize = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
-const same = (left?: string, right?: string) => Boolean(left && right && normalize(left) === normalize(right));
+const same = (left?: string, right?: string) => Boolean(left && right && normalizeEvidenceText(left) === normalizeEvidenceText(right));
 const unavailable = new Set(["blocked", "timeout", "rate_limited"]);
 
 export const matchesIdentity = (resource: ReferenceResource, values?: EvidenceValues): boolean =>

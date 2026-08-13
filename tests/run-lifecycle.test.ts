@@ -14,6 +14,15 @@ test("idempotent launches dedupe and only one run can claim a checkpoint", () =>
   assert.equal(runs.claimNext(first.id)?.resourceId, "r2");
 });
 
+test("different runs can claim separate checkpoints and selections are bounded", () => {
+  const runs = new InMemoryRunRegistry();
+  const first = runs.launch({ idempotencyKey: "one", selection: ["r1"], budget: 1 });
+  const second = runs.launch({ idempotencyKey: "two", selection: ["r2"], budget: 1 });
+  assert.equal(runs.claimNext(first.id)?.resourceId, "r1");
+  assert.equal(runs.claimNext(second.id)?.resourceId, "r2");
+  assert.throws(() => runs.launch({ idempotencyKey: "large", selection: Array.from({ length: 101 }, (_, index) => `r${index}`), budget: 1 }));
+});
+
 test("bad cron secrets are rejected", () => {
   assert.throws(() => authorizeCron("wrong", "expected"));
 });

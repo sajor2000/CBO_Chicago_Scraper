@@ -1,4 +1,4 @@
-import type { CapturedObservation } from "../retrieval/types.ts";
+import { normalizeEvidenceText, type CapturedObservation } from "../retrieval/types.ts";
 
 export interface Scores {
   fit: number;
@@ -7,15 +7,13 @@ export interface Scores {
   rationale: string[];
 }
 
-const normal = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
-
 export const scoreEvidence = (
   resource: { name: string; address?: string },
   observations: readonly CapturedObservation[]
 ): Scores => {
   const successful = observations.filter((observation) => observation.state === "success");
-  const names = successful.filter((o) => normal(o.values?.name) === normal(resource.name)).length;
-  const addresses = successful.filter((o) => resource.address && normal(o.values?.address) === normal(resource.address)).length;
+  const names = successful.filter((o) => normalizeEvidenceText(o.values?.name) === normalizeEvidenceText(resource.name)).length;
+  const addresses = successful.filter((o) => resource.address && normalizeEvidenceText(o.values?.address) === normalizeEvidenceText(resource.address)).length;
   const official = successful.some((o) => o.provider === "firecrawl");
   const google = successful.some((o) => o.provider === "google_places");
 

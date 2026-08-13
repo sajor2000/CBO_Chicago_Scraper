@@ -20,15 +20,18 @@ export class FixtureModeError extends Error {
 const normalized = (email: string) => email.trim().toLowerCase();
 const entries = (value: string | undefined) => new Set((value ?? "").split(",").map(normalized).filter(Boolean));
 
-/** Authorization is separate from Entra authentication so the allowlist remains explicit. */
-export function authorizeReviewer(user: AuthenticatedUser | undefined, allowlist = process.env.REVIEWER_ALLOWLIST): AuthenticatedUser {
-  if (!user?.email || !entries(allowlist).has(normalized(user.email))) throw new ReviewerAuthorizationError();
+function authorizeAllowlisted(user: AuthenticatedUser | undefined, allowlist: string | undefined, message: string): AuthenticatedUser {
+  if (!user?.email || !entries(allowlist).has(normalized(user.email))) throw new ReviewerAuthorizationError(message);
   return { ...user, email: normalized(user.email) };
 }
 
+/** Authorization is separate from Entra authentication so the allowlist remains explicit. */
+export function authorizeReviewer(user: AuthenticatedUser | undefined, allowlist = process.env.REVIEWER_ALLOWLIST): AuthenticatedUser {
+  return authorizeAllowlisted(user, allowlist, "Reviewer authorization required");
+}
+
 export function authorizeRunOperator(user: AuthenticatedUser | undefined, allowlist = process.env.RUN_OPERATOR_ALLOWLIST): AuthenticatedUser {
-  if (!user?.email || !entries(allowlist).has(normalized(user.email))) throw new ReviewerAuthorizationError("Manual run authorization required");
-  return { ...user, email: normalized(user.email) };
+  return authorizeAllowlisted(user, allowlist, "Manual run authorization required");
 }
 
 /** Temporary local fixture seam; a request header is never a production identity. */

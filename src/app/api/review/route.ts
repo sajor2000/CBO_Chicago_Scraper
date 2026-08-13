@@ -16,7 +16,8 @@ export async function POST(request: Request): Promise<Response> {
 export function GET(request: Request): Response {
   try {
     authorizeReviewer(fixtureUserFromHeader(request));
-    return Response.json(reviewRepository.list());
+    const limit = Number(new URL(request.url).searchParams.get("limit") ?? "50");
+    return Response.json(reviewRepository.list(Number.isFinite(limit) ? limit : 50));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Reviewer authorization required." }, { status: error instanceof FixtureModeError ? 503 : 403 });
   }

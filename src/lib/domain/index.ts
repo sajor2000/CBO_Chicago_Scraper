@@ -1,1 +1,1 @@
-export * from "./review-workspace.js";
+export * from "./review-workspace.ts";

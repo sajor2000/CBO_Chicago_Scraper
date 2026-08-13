@@ -22,7 +22,8 @@ test("review workspace persists immutable, traceable review records", () => {
   }
 
   assert.match(schema, /unique \(resource_id, source_version\)/i);
-  assert.match(schema, /unique \(provider, observation_key\)/i);
+  assert.match(schema, /unique \(provider, observation_key, observed_at\)/i);
+  assert.match(schema, /decision text not null check \(decision in \('approved', 'rejected', 'deferred'\)\)/i);
   assert.match(schema, /before_values jsonb not null/i);
   assert.match(schema, /proposed_values jsonb not null/i);
   assert.match(schema, /provenance jsonb not null/i);

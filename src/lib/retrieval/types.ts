@@ -18,6 +18,8 @@ export interface CapturedObservation {
   values?: EvidenceValues;
 }
 
+export const normalizeEvidenceText = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
+
 /** An adapter input is captured by a caller; no adapter performs network I/O. */
 export interface RetrievalAdapter {
   provider: Provider;

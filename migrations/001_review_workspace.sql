@@ -41,7 +41,7 @@ create table review_workspace.source_observations (
   retrieval_metadata jsonb not null default '{}'::jsonb,
   supersedes_observation_id uuid references review_workspace.source_observations(id),
   check (supersedes_observation_id is null or supersedes_observation_id <> id),
-  unique (provider, observation_key)
+  unique (provider, observation_key, observed_at)
 );
 
 create table review_workspace.candidate_revisions (
@@ -61,7 +61,7 @@ create table review_workspace.review_decisions (
   id uuid primary key default gen_random_uuid(),
   candidate_revision_id uuid not null references review_workspace.candidate_revisions(id),
   reviewer_subject text not null,
-  decision text not null check (decision in ('approved', 'rejected', 'needs_information')),
+  decision text not null check (decision in ('approved', 'rejected', 'deferred')),
   approved_field_paths jsonb not null default '[]'::jsonb,
   rationale text,
   decided_at timestamptz not null default now(),

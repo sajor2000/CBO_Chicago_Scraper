@@ -51,8 +51,8 @@ export class InMemoryReviewRepository {
     return candidate && clone(candidate);
   }
 
-  list(): ReviewCandidate[] {
-    return [...this.#candidates.values()].map(clone);
+  list(limit = 50): ReviewCandidate[] {
+    return [...this.#candidates.values()].slice(0, Math.max(1, Math.min(limit, 100))).map(clone);
   }
 
   history(candidateId: string): ReviewCandidate[] {
