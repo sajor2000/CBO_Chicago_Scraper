@@ -72,7 +72,7 @@ flowchart LR
 
 - **Goal:** Provide a safe, explicit import contract without hard-coding a mirror schema or exposing credentials.
 - **Requirements:** R2, R4, R6.
-- **Files:** `migrations/004_baseline_imports.sql`, `src/lib/imports/cbo-baseline.ts`, `.env.example`, `docs/operator-runbook.md`, `tests/cbo-baseline-import.test.ts`.
+- **Files:** `migrations/004_baseline_imports.sql`, `src/lib/imports/cbo-baseline.ts`, `.env.example`, `docs/ops/operator-runbook.md`, `tests/cbo-baseline-import.test.ts`.
 - **Approach:** Add an append-only baseline-import receipt table. Read source URL/name/table/ID/field allowlist only from server environment. Split and validate a schema-qualified table, validate its relation type and configured public fields through parameterized catalog queries, and quote only approved identifiers for the final select. Reject missing/invalid configuration before any destination query.
 - **Test scenarios:** Invalid schema/table/column/field is rejected before any destination query; source URL and sensitive values are absent from returned error/report data; the receipt records safe aggregate counts only.
 - **Verification:** Unit tests and typecheck pass.
@@ -90,7 +90,7 @@ flowchart LR
 
 - **Goal:** Let an authorized operator manually run the baseline import and receive a durable receipt without revealing source credentials.
 - **Requirements:** R5, R6, R7.
-- **Files:** `scripts/import-cbo-baseline.ts`, `package.json`, `src/lib/imports/cbo-baseline.ts`, `docs/operator-runbook.md`, `tests/cbo-baseline-import.test.ts`.
+- **Files:** `scripts/import-cbo-baseline.ts`, `package.json`, `src/lib/imports/cbo-baseline.ts`, `docs/ops/operator-runbook.md`, `tests/cbo-baseline-import.test.ts`.
 - **Approach:** Add a documented `npm run import:cbo-baseline` command that reads server-only environment configuration, verifies the review workspace sentinel, emits a count-only summary, and exits nonzero on safe failure. No import button, scheduler, or browser route is introduced.
 - **Test scenarios:** Missing/invalid configuration exits before destination writes; a successful run prints counts only; an import error returns a stable message with no source URL, raw row, or stack trace.
 - **Verification:** Command fixture test, full `npm run check`, and `npm run build` pass.
@@ -99,7 +99,7 @@ flowchart LR
 
 - **Goal:** Make the post-import boundary unambiguous for operators and future verification work.
 - **Requirements:** R5, R7.
-- **Files:** `docs/operator-runbook.md`, `docs/data-dictionary.md`.
+- **Files:** `docs/ops/operator-runbook.md`, `docs/data/data-dictionary.md`.
 - **Approach:** Document that imported rows are the baseline population; the next separately delivered verification run compares web evidence against them and stages reviewable deltas or potential new resources. State explicitly that missing evidence, a failed lookup, or an import failure never removes a CBO.
 - **Test scenarios:** Documentation names the report and the no-auto-removal rule.
 - **Verification:** Documentation review and diff check pass.

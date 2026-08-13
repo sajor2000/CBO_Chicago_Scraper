@@ -13,7 +13,7 @@ The app has durable Neon review/run repositories and a manual, one-checkpoint ho
 
 ## Evidence and source controls
 
-Follow [source-policy.md](source-policy.md): official sites are primary, Google corroborates but cannot close a resource alone, trusted directories can propose leads, and AI advice is advisory only. Retain the immutable citation metadata, normalized observations, reviewer decision, and run report needed to explain a change. Store raw captures in controlled object storage with least-privilege access; redact credentials, cookies, authorization headers, and unnecessary personal contact information before retention. Set and periodically review a retention period with the service owner and data-governance owner.
+Follow [source-policy.md](../policy/source-policy.md): official sites are primary, Google corroborates but cannot close a resource alone, trusted directories can propose leads, and AI advice is advisory only. Retain the immutable citation metadata, normalized observations, reviewer decision, and run report needed to explain a change. Store raw captures in controlled object storage with least-privilege access; redact credentials, cookies, authorization headers, and unnecessary personal contact information before retention. Set and periodically review a retention period with the service owner and data-governance owner.
 
 ## Cost and monitoring
 

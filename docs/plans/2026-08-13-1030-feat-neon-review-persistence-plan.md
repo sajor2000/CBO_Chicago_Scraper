@@ -103,7 +103,7 @@ flowchart TB
 ### U4. Add operational setup and non-production verification
 
 - **Goal:** Make repeatable migration, seed-access, and integration verification possible without live provider or production access.
-- **Files:** `package.json`, `.env.example`, `docs/operator-runbook.md`, `docs/security-and-secrets.md`, `tests/neon-review-persistence.test.ts`.
+- **Files:** `package.json`, `.env.example`, `docs/ops/operator-runbook.md`, `docs/ops/security-and-secrets.md`, `tests/neon-review-persistence.test.ts`.
 - **Approach:** Provide audited role administration, an explicit review-workspace migration command, and an opt-in integration command guarded by `REVIEW_DATABASE_URL`; both verify the sentinel before any write and run under the least-privilege review role. Keep the default test suite fixture-only.
 - **Test scenarios:** Integration suite skips cleanly without a test URL, rejects a target without the workspace sentinel, runs only against the dedicated workspace, and validates persistence across independent repository instances.
 

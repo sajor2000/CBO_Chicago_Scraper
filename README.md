@@ -66,10 +66,12 @@ src/lib/providers/       Firecrawl, Google Places, Tavily, IRS, directory adapte
 src/lib/verification/    Deterministic evidence checks and checkpoint workflow
 src/lib/repositories/    Neon review/audit persistence
 src/lib/ai/              Azure OpenAI advisory scorer
-migrations/              Ordered Neon review-workspace migrations
+migrations/              Ordered Neon review-workspace migrations (001–006 applied via npm script; 007 pending)
 scripts/                 Source profiling and baseline import commands
+sql/source/              Read-only source view definitions for the Neon mirror
 tests/                   Node contract and workflow tests
-docs/                    Runbooks, data dictionary, policy, and delivery plans
+docs/                    See docs/README.md — ops, policy, data, and delivery plans
+PRODUCT.md / DESIGN.md   Impeccable product and visual context (repo root)
 ```
 
 ## Local setup
@@ -109,7 +111,7 @@ npm run build   # Production Next.js build
 Start with these files, in order:
 
 1. [docs/plans/2026-08-13-feat-live-verification-pilot.md](docs/plans/2026-08-13-feat-live-verification-pilot.md) — current manual-pilot scope and safety rules.
-2. [docs/operator-runbook.md](docs/operator-runbook.md) and [docs/source-policy.md](docs/source-policy.md) — operational boundaries.
+2. [docs/ops/operator-runbook.md](docs/ops/operator-runbook.md) and [docs/policy/source-policy.md](docs/policy/source-policy.md) — operational boundaries.
 3. [src/lib/verification/run-checkpoint.ts](src/lib/verification/run-checkpoint.ts) — one-checkpoint verification lifecycle.
 4. [src/lib/providers/hosted-evidence.ts](src/lib/providers/hosted-evidence.ts) — provider orchestration.
 5. [src/lib/repositories/review.ts](src/lib/repositories/review.ts) and [src/lib/runs/index.ts](src/lib/runs/index.ts) — durable Neon state.
@@ -119,9 +121,11 @@ Before changing behavior, run `npm run check`. Preserve the review-first boundar
 
 ## Further documentation
 
-- [Operator runbook](docs/operator-runbook.md)
-- [Operations](docs/operations.md)
-- [Security and secrets](docs/security-and-secrets.md)
-- [Data dictionary](docs/data-dictionary.md)
-- [Reviewer guide](docs/reviewer-guide.md)
-- [Source policy](docs/source-policy.md)
+Index: [docs/README.md](docs/README.md)
+
+- [Operator runbook](docs/ops/operator-runbook.md)
+- [Operations](docs/ops/operations.md)
+- [Security and secrets](docs/ops/security-and-secrets.md)
+- [Data dictionary](docs/data/data-dictionary.md)
+- [Reviewer guide](docs/policy/reviewer-guide.md)
+- [Source policy](docs/policy/source-policy.md)
