@@ -30,6 +30,7 @@ export class RunLockError extends Error {
 const blankReport = (): RunReport => ({ recordsChecked: 0, candidatesStaged: 0, conflicts: 0, unableToVerify: 0, providerFailures: 0, budgetUsed: 0 });
 const copy = (run: VerificationRun) => structuredClone(run);
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+export const scheduledCohortKey = (now = new Date()) => `scheduled:${now.toISOString().slice(0, 7)}`;
 
 /** Fixture-only synchronous registry. */
 export class InMemoryRunRegistry {
@@ -148,15 +149,39 @@ export class NeonRunRegistry {
   }
 
   async launch(input: { idempotencyKey: string; selection: string[]; budget: number }): Promise<VerificationRun> {
+    return this.#launch({ ...input, triggerKind: "manual", maximumSelection: 100 });
+  }
+
+  /** Starts or resumes the current UTC-month cohort over every seeded resource. */
+  async launchScheduled(now = new Date()): Promise<VerificationRun> {
+    const key = scheduledCohortKey(now);
+    const active = await this.#query<{ id: string }>(`
+      select run.id
+      from review_workspace.verification_runs run
+      join review_workspace.run_current_state state on state.run_id = run.id
+      where run.trigger_kind = 'scheduled' and state.status in ('queued', 'running')
+      order by run.started_at asc limit 1
+    `);
+    if (active[0]?.id) return (await this.get(active[0].id))!;
+    const resources = await this.#query<{ id: string }>(`
+      select resource.id
+      from review_workspace.resources resource
+      where exists (select 1 from review_workspace.resource_snapshots snapshot where snapshot.resource_id = resource.id)
+      order by resource.id
+    `);
+    return this.#launch({ idempotencyKey: key, selection: resources.map((resource) => resource.id), budget: resources.length, triggerKind: "scheduled", maximumSelection: 10_000 });
+  }
+
+  async #launch(input: { idempotencyKey: string; selection: string[]; budget: number; triggerKind: "manual" | "scheduled"; maximumSelection: number }): Promise<VerificationRun> {
     const selection = [...new Set(input.selection)];
-    if (!input.idempotencyKey || !selection.length || input.budget < 1 || input.budget > selection.length || selection.length > 100) {
-      throw new Error("A positive budget, idempotency key, and at most 100 selected resources are required.");
+    if (!input.idempotencyKey || !selection.length || input.budget < 1 || input.budget > selection.length || selection.length > input.maximumSelection) {
+      throw new Error(`A positive budget, idempotency key, and at most ${input.maximumSelection} selected resources are required.`);
     }
     if (selection.some((resourceId) => !isUuid(resourceId))) throw new Error("Selected resource IDs must be UUIDs.");
     const rows = await this.#query<{ id: string }>(`
       with inserted_run as (
         insert into review_workspace.verification_runs (idempotency_key, trigger_kind, run_parameters)
-        values ($1, 'manual', jsonb_build_object('selection', $2::jsonb, 'budget', $3))
+        values ($1, $6, jsonb_build_object('selection', $2::jsonb, 'budget', $3))
         on conflict (idempotency_key) do nothing
         returning id
       ), inserted_state as (
@@ -175,7 +200,7 @@ export class NeonRunRegistry {
       union all
       select id from review_workspace.verification_runs where idempotency_key = $1
       limit 1
-    `, [input.idempotencyKey, JSON.stringify(selection), input.budget, JSON.stringify(blankReport()), selection]);
+    `, [input.idempotencyKey, JSON.stringify(selection), input.budget, JSON.stringify(blankReport()), selection, input.triggerKind]);
     const runId = rows[0]?.id ?? (await this.#query<{ id: string }>(
       "select id from review_workspace.verification_runs where idempotency_key = $1",
       [input.idempotencyKey]
