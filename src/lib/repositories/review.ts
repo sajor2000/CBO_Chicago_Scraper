@@ -1,6 +1,7 @@
 export type CandidateStatus = "staged" | "deferred" | "rejected" | "approved" | "publish_pending" | "published" | "publish_failed";
 import type { ReviewDecision } from "../domain/review-workspace.ts";
 import { assertReviewWorkspace, requireWorkspaceRole, reviewWorkspaceDb } from "../db.ts";
+import { redactEvidence } from "../evidence/redaction.ts";
 
 export type CandidateAction = ReviewDecision;
 export type FieldValues = Record<string, string>;
@@ -323,9 +324,10 @@ export class NeonReviewRepository {
     proposedValues: FieldValues;
     observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: unknown }>;
   }): Promise<ReviewCandidate> {
+    const observations = input.observations.map(({ excerpt, ...observation }) => ({ ...observation, excerpt: excerpt && redactEvidence(excerpt).slice(0, 6000) }));
     const provenance = {
-      evidence: input.observations.map((observation) => observation.sourceUrl ?? `${observation.provider}: ${observation.state}`),
-      observations: input.observations.map(({ excerpt, ...observation }) => ({ ...observation, excerpt: excerpt?.slice(0, 6000) }))
+      evidence: observations.map((observation) => observation.sourceUrl ?? `${observation.provider}: ${observation.state}`),
+      observations
     };
     const rows = await this.#query<{ id: string }>(`
       with snapshot as (
@@ -371,7 +373,7 @@ export class NeonReviewRepository {
         returning candidate_id as id
       )
       select id from updated_state union all select id from inserted_state
-    `, [input.resourceId, input.runId, input.kind, JSON.stringify(input.beforeValues), JSON.stringify(input.proposedValues), JSON.stringify(input.observations), JSON.stringify(provenance)]);
+    `, [input.resourceId, input.runId, input.kind, JSON.stringify(input.beforeValues), JSON.stringify(input.proposedValues), JSON.stringify(observations), JSON.stringify(provenance)]);
     if (!rows[0]) throw new Error("A seeded resource snapshot is required before staging review evidence.");
     return (await this.get(rows[0].id))!;
   }
