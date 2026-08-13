@@ -98,3 +98,11 @@ test("baseline import receipts contain aggregate-only append-only outcomes", () 
   assert.match(schema, /before update or delete on review_workspace\.baseline_import_receipts/i);
   assert.match(schema, /grant select, insert on review_workspace\.baseline_import_receipts/i);
 });
+
+test("Azure export artifacts remain append-only and contain no production credential", () => {
+  const schema = migration("005_azure_exports.sql");
+  assert.match(schema, /create table review_workspace\.azure_export_artifacts/i);
+  assert.match(schema, /blob_reference text not null/i);
+  assert.match(schema, /before update or delete on review_workspace\.azure_export_artifacts/i);
+  assert.doesNotMatch(schema, /production_database_url/i);
+});

@@ -26,3 +26,7 @@ Before enabling hosted providers, set provider-specific spend caps and request l
 3. Investigate and correct the review workspace first. Never edit production records manually to bypass the receipt/audit path.
 4. A future production rollback must use the publication receipt and refuse a rollback when a later publication touched the same field.
 5. The service owner confirms backup/restore readiness for the review database and production directory, then documents the incident and recovery decision.
+
+## Azure handoff gate
+
+Azure export is unavailable until the directory owner has supplied and approved the target table, primary key, optimistic version field, allowlisted column map, backup owner, and a schema-matched non-production database. A generated SQL file is reviewed and applied manually by an Azure operator. Any target-version mismatch must roll back the transaction; the Vercel app has no Azure production credential.
