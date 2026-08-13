@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { executeScheduledCron } from "../src/app/api/cron/route.ts";
+import { CronAuthorizationError } from "../src/lib/runs/cron.ts";
 
 test("execute route processes one checkpoint, sets maxDuration, and releases leases on failure", () => {
   const route = readFileSync(new URL("../src/app/api/runs/[runId]/execute/route.ts", import.meta.url), "utf8");
@@ -25,9 +27,27 @@ test("execution bounds provider work and passes its lease to candidate staging",
   assert.match(repository, /state\.status = 'running'/);
 });
 
-test("cron shares the checkpoint worker and starts the scheduled cohort", () => {
+test("cron shares the checkpoint worker, requires a baseline, and processes one checkpoint", async () => {
   const cron = readFileSync(new URL("../src/app/api/cron/route.ts", import.meta.url), "utf8");
-  assert.match(cron, /authorizeCron/);
-  assert.match(cron, /launchScheduled\(\)/);
-  assert.match(cron, /executeCheckpoint\(run\.id\)/);
+  const calls: string[] = [];
+  const response = await executeScheduledCron(new Request("https://example.test/api/cron", { headers: { authorization: "Bearer cron-secret" } }), {
+    authorize: (token) => { assert.equal(token, "cron-secret"); calls.push("authorize"); },
+    assertBaselineReady: async () => { calls.push("baseline"); },
+    launchScheduled: async () => { calls.push("launch"); return { id: "run-1" }; },
+    executeCheckpoint: async (runId) => ({ recordsChecked: runId === "run-1" ? 1 : 0, budgetUsed: 1, candidatesStaged: 0, conflicts: 0, unableToVerify: 0, providerFailures: 0, done: false })
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls, ["authorize", "baseline", "launch"]);
+  assert.equal((await response.json()).recordsChecked, 1);
+  assert.match(cron, /export const maxDuration = 60/);
+});
+
+test("cron rejects bad authorization before baseline or provider work", async () => {
+  const response = await executeScheduledCron(new Request("https://example.test/api/cron"), {
+    authorize: () => { throw new CronAuthorizationError(); },
+    assertBaselineReady: async () => assert.fail("baseline must not run"),
+    launchScheduled: async () => assert.fail("launch must not run"),
+    executeCheckpoint: async () => assert.fail("checkpoint must not run")
+  });
+  assert.equal(response.status, 401);
 });

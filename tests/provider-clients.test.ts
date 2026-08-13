@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { formatAuditEvidence } from "../src/lib/providers/hosted-evidence.ts";
 import { FirecrawlClient, GooglePlacesClient, IrsClient, TavilyClient, TrustedDirectoryClient } from "../src/lib/providers/index.ts";
 
 test("Firecrawl uses a bounded v2 scrape request", async () => {
@@ -78,4 +79,17 @@ test("Google Places and Tavily return bounded, advisory observations", async () 
   assert.deepEqual(place.values, { name: "Example Pantry", address: "1 Main St", phone: "+1 312-555-0100", url: "https://example.org", businessStatus: "closed" });
   assert.equal(search.excerpt, "A community pantry");
   assert.equal(search.sourceUrl, "https://example.org");
+});
+
+test("GPT audit input retains bounded structured provider evidence", () => {
+  const evidence = formatAuditEvidence([
+    { provider: "google_places", state: "success", observedAt: "2026-08-13T00:00:00Z", sourceUrl: "https://example.org", values: { name: "Example Pantry", address: "1 Main St", phone: "+1 312-555-0100", businessStatus: "closed" } },
+    { provider: "firecrawl", state: "success", observedAt: "2026-08-13T00:00:00Z", excerpt: "x".repeat(500) }
+  ]);
+  const parsed = JSON.parse(evidence) as Array<{ values?: { businessStatus?: string; address?: string }; excerpt?: string }>;
+  assert.equal(parsed[0]?.values?.businessStatus, "closed");
+  assert.equal(parsed[0]?.values?.address, "1 Main St");
+  assert.equal(parsed[1]?.excerpt?.length, 300);
+  assert.ok(evidence.length <= 6_000);
+  assert.doesNotThrow(() => JSON.parse(formatAuditEvidence(Array.from({ length: 6 }, () => ({ provider: "google_places" as const, state: "success" as const, observedAt: "2026-08-13T00:00:00Z", excerpt: "x".repeat(500) })) )));
 });
