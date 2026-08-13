@@ -51,7 +51,7 @@ The default service-location boundary is Cook, DuPage, Kane, Kendall, Lake, McHe
 - R8. Continue to enforce human review: evidence, AI scores, failed lookups, Google status, and source absence cannot directly change a copied directory record or become exportable.
 - R9. Keep approvals in the immutable `approved_for_future_export` state and document the required Azure table/key/version/backup/test-target contract for a later manual delta exporter.
 - R10. Keep Azure credentials, automatic Azure execution, full-table replacement, and a bi-monthly schedule absent from this delivery until the source refresh and manual verification pilot are accepted.
-- R11. Deliver a polished, accessible operator/reviewer UI for manually triggering a bounded agentic crawl, following run progress and provider failures, and reviewing field-level evidence in context. After acceptance, enable the exact same durable workflow on a guarded Vercel cron schedule every two months; cron must not overlap runs or bypass human approval.
+- R11. Deliver a polished, accessible operator/reviewer UI for manually triggering a bounded agentic crawl, following run progress and provider failures, and reviewing field-level evidence in context. Define the post-pilot scheduling requirement—use the exact same durable workflow on a guarded Vercel cron schedule every two months, without overlapping runs or bypassing human approval—but defer cron implementation and activation to the later scheduling release required by R10.
 
 ### Actors
 
