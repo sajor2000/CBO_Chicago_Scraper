@@ -30,3 +30,16 @@ test("a Google-only closure is staged for review without a closed field", async 
   assert.equal(staged?.kind, "closure_review");
   assert.deepEqual(staged?.proposedValues, {});
 });
+
+test("blocked sources are counted as unable to verify without staging a candidate", async () => {
+  let staged = false;
+  const output = await processVerificationCheckpoint({
+    resource,
+    observations: [{ provider: "firecrawl", state: "rate_limited", observedAt }],
+    stage: async () => { staged = true; }
+  });
+  assert.equal(output.result.state, "unable_to_verify");
+  assert.equal(output.report.candidatesStaged, 0);
+  assert.equal(output.report.unableToVerify, 1);
+  assert.equal(staged, false);
+});

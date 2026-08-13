@@ -24,12 +24,12 @@ export async function processVerificationCheckpoint(input: {
 }): Promise<{ result: VerificationResult; report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">> }> {
   const result = verifyResource({ resource: input.resource, observations: input.observations, advisory: input.advisory });
   const report = {
-    candidatesStaged: result.state === "no_change" ? 0 : 1,
+    candidatesStaged: result.state === "candidate_update" || result.state === "conflict" ? 1 : 0,
     conflicts: result.state === "conflict" ? 1 : 0,
     unableToVerify: result.state === "unable_to_verify" ? 1 : 0,
     providerFailures: result.observations.filter((observation) => observation.state !== "success" && observation.state !== "no_result").length
   };
-  if (result.state !== "no_change") {
+  if (result.state === "candidate_update" || result.state === "conflict") {
     await input.stage({
       kind: result.state === "conflict" ? "closure_review" : "update",
       beforeValues: Object.fromEntries(result.diffs.map((diff) => [diff.field, diff.before ?? ""])),
