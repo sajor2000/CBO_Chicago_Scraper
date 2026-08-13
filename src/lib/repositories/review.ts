@@ -198,6 +198,20 @@ export class NeonReviewRepository {
     return rows.map(fromRow);
   }
 
+  async seededResource(resourceId: string): Promise<{ id: string; payload: Record<string, unknown> } | undefined> {
+    const rows = await this.#query<{ id: string; source_payload: Record<string, unknown> }>(`
+      select resource.id, snapshot.source_payload
+      from review_workspace.resources resource
+      join lateral (
+        select source_payload from review_workspace.resource_snapshots
+        where resource_id = resource.id order by imported_at desc limit 1
+      ) snapshot on true
+      where resource.id = $1::uuid
+    `, [resourceId]);
+    const row = rows[0];
+    return row && { id: row.id, payload: row.source_payload };
+  }
+
   async decide(input: { candidateId: string; expectedRevision: number; reviewerSubject: string; action: CandidateAction; fields?: string[]; reason: string }): Promise<ReviewCandidate> {
     requiredReason(input.reason);
     if (input.action === "approved" && !input.fields?.length) throw new Error("Approval requires at least one proposed field.");
@@ -244,7 +258,7 @@ export class NeonReviewRepository {
     kind: "update" | "closure_review" | "new_resource";
     beforeValues: FieldValues;
     proposedValues: FieldValues;
-    observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: FieldValues }>;
+    observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: unknown }>;
   }): Promise<ReviewCandidate> {
     const provenance = {
       evidence: input.observations.map((observation) => observation.sourceUrl ?? `${observation.provider}: ${observation.state}`),
