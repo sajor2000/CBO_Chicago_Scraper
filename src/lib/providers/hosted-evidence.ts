@@ -1,4 +1,4 @@
-import { azureOpenAiScorerFromEnv } from "../ai/azure-openai.ts";
+import { azureOpenAiScorerFromEnv, CBO_AUDIT_PROMPT_VERSION } from "../ai/azure-openai.ts";
 import type { CapturedObservation } from "../retrieval/types.ts";
 import type { ReferenceResource } from "../verification/index.ts";
 import { FirecrawlClient, GooglePlacesClient, IrsClient, TavilyClient, TrustedDirectoryClient } from "./index.ts";
@@ -41,7 +41,15 @@ export function hostedEvidenceFromEnv() {
     }),
     score: async (resource: ReferenceResource, observations: CapturedObservation[]) => {
       const score = await scorer.score({ name: resource.name, address: resource.address, evidence: observations.map((observation) => observation.excerpt ?? observation.sourceUrl ?? `${observation.provider}: ${observation.state}`).join("\n") });
-      return { suggestedCategory: score.suggestedCategory, rationale: score.rationale };
+      return {
+        promptVersion: CBO_AUDIT_PROMPT_VERSION,
+        cboEligibility: score.cboEligibility,
+        operationalAssessment: score.operationalAssessment,
+        evidenceQuality: score.evidenceQuality,
+        citations: score.citations,
+        suggestedCategory: score.suggestedCategory,
+        rationale: score.rationale
+      };
     }
   };
 }
