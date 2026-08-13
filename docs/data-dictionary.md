@@ -6,6 +6,7 @@ This workspace is a writable review database. It never writes to the ChicagoHeal
 | --- | --- | --- |
 | `resources` | Stable identity for an imported reference resource, keyed by source and source ID. | Insert-only in v1. |
 | `resource_snapshots` | Versioned source payload captured at import. | Append-only. |
+| `baseline_import_receipts` | Aggregate outcome of a controlled read-only source-directory import. | Append-only; contains counts only. |
 | `verification_runs` | Idempotent manual or scheduled batch request. | Run metadata; no source credentials. |
 | `source_observations` | Provider observation, extracted values, and retrieval metadata. | Append-only; corrections link with `supersedes_observation_id`. |
 | `candidate_revisions` | Proposed resource change with distinct before, proposed, and provenance values. | Append-only; corrections link with `supersedes_candidate_revision_id`. |
