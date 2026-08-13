@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/schema-contract.test.ts",
+    "test": "node --test tests/*.test.ts",
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
