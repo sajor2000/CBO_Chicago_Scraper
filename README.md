@@ -4,6 +4,21 @@ A review-first internal application for keeping ChicagoHealthMap community-based
 
 This is deliberately **not** an autonomous publisher. No scraper, Google result, AI score, timeout, or missing URL can automatically close, delete, merge, or publish a CBO.
 
+## What counts as a CBO resource
+
+For this directory, a CBO resource is a **currently operating organization or service location that gives people direct access to health-related or health-enabling support**. It must satisfy all of the following before it can be proposed for review:
+
+- serves people in the defined Chicagoland geography;
+- provides a direct resource, referral, or care/service access point—not only information, advocacy, fundraising, or worship;
+- has a credible public identity and current contact/location evidence; and
+- fits at least one approved resource area: food access, clinic/FQHC or primary care, shelter/housing, mental health, substance-use support, WIC, benefits navigation, transportation, domestic-violence/crisis support, or immigrant/refugee support.
+
+Public agencies, nonprofit organizations, and faith-affiliated programs may qualify when the specific program provides a direct eligible resource. A for-profit provider, worship-only site, advocacy-only organization, duplicate listing, or an organization with no credible evidence of a direct local service does not qualify by default. Ambiguous cases are staged as `needs_review`; the agent never invents eligibility.
+
+### Geographic scope
+
+The default service-location boundary is the seven-county Chicagoland/CMAP region: **Cook, DuPage, Kane, Kendall, Lake, McHenry, and Will Counties, Illinois**. A location outside that area is out of scope unless a reviewer explicitly documents that it delivers a substantial, direct service to residents within the seven-county region. The verifier records its location/service evidence but does not automatically add an out-of-scope lead.
+
 ## What the app does
 
 1. Keeps the copied CBO/WIC tables in their source-compatible shape for future refreshes and Azure handoff.

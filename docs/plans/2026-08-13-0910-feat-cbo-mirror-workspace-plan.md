@@ -33,6 +33,12 @@ Every approved export remains a limited delta for the Azure owner to inspect and
 The existing source mirror has 1,969 `community_resource_locations` rows and 30 `wic_locations` rows with stable unique identifiers and `geometry(Point,4326)` columns.
 The current import path reduces both relations into a generic normalized snapshot, which cannot produce a source-compatible CBO/WIC delta and requires DDL on the read-only mirror.
 
+### CBO Eligibility and Geographic Scope
+
+An eligible directory resource is a currently operating organization or service location that provides Chicagoland residents direct access to health-related or health-enabling support. It must have credible public identity/contact evidence, an eligible direct service, and a connection to the defined geographic scope. Eligible service areas are food access; clinic/FQHC or primary care; shelter/housing; mental health; substance-use support; WIC; benefits navigation; transportation; domestic-violence/crisis support; and immigrant/refugee support.
+
+The default service-location boundary is Cook, DuPage, Kane, Kendall, Lake, McHenry, and Will Counties, Illinois. A location outside that boundary is out of scope unless a reviewer documents substantial direct service to residents inside it. For-profit providers, worship-only sites, advocacy-only organizations, duplicate listings, and entities without credible evidence of direct local service are not eligible by default. Ambiguous cases stay `needs_review`; automation cannot decide eligibility or create a new public record.
+
 ### Requirements
 
 - R1. Create a distinct Neon project/database for this app, with a dedicated least-privilege application role and a workspace sentinel that rejects every other target.
