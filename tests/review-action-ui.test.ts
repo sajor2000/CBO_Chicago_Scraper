@@ -8,6 +8,7 @@ test("review detail renders field-level actions through the protected API", () =
   assert.match(page, /ReviewActions/);
   assert.match(actions, /candidateId, expectedRevision, action/);
   assert.match(actions, /Approve fields/);
+  assert.match(actions, /Save edited proposal/);
   assert.match(actions, /Defer/);
   assert.match(actions, /Reject/);
   assert.match(actions, /\/api\/review/);

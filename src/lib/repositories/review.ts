@@ -275,6 +275,46 @@ export class NeonReviewRepository {
     return (await this.get(rows[0].id))!;
   }
 
+  async supersede(input: { candidateId: string; expectedRevision: number; proposedValues: FieldValues; actorSubject: string; reason: string }): Promise<ReviewCandidate> {
+    requiredReason(input.reason);
+    if (!Object.keys(input.proposedValues).length || Object.values(input.proposedValues).some((value) => !value.trim())) throw new Error("An edited proposal requires non-empty field values.");
+    const rows = await this.#query<{ id: string }>(`
+      with authorized as (
+        select 1 from review_workspace.reviewer_access where subject = $4 and role = 'reviewer' and revoked_at is null
+      ), previous as (
+        select state.candidate_id, state.candidate_revision_id, revision.resource_id, revision.run_id,
+          revision.kind, revision.before_values, revision.provenance
+        from review_workspace.candidate_current_state state
+        join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
+        where state.candidate_id = $1::uuid and state.revision = $2
+          and state.status in ('staged', 'deferred') and exists (select 1 from authorized)
+      ), inserted_revision as (
+        insert into review_workspace.candidate_revisions
+          (resource_id, run_id, kind, before_values, proposed_values, provenance, supersedes_candidate_revision_id)
+        select resource_id, run_id, kind, before_values, $3::jsonb,
+          provenance || jsonb_build_object('reviewerEdit', jsonb_build_object('subject', $4, 'reason', $5)), candidate_revision_id
+        from previous returning id
+      ), linked_snapshot as (
+        insert into review_workspace.candidate_revision_snapshot_links (candidate_revision_id, resource_snapshot_id)
+        select inserted_revision.id, link.resource_snapshot_id
+        from inserted_revision join previous on true
+        join review_workspace.candidate_revision_snapshot_links link on link.candidate_revision_id = previous.candidate_revision_id
+      ), updated as (
+        update review_workspace.candidate_current_state state
+        set candidate_revision_id = inserted_revision.id, revision = state.revision + 1,
+            status = 'staged', approved_field_paths = '[]'::jsonb, updated_at = now()
+        from inserted_revision, previous
+        where state.candidate_id = previous.candidate_id and state.candidate_revision_id = previous.candidate_revision_id
+        returning state.candidate_id as id
+      ) select id from updated
+    `, [input.candidateId, input.expectedRevision, JSON.stringify(input.proposedValues), input.actorSubject, input.reason.trim()]);
+    if (!rows[0]) {
+      await requireWorkspaceRole(input.actorSubject, "reviewer");
+      throw new RevisionConflictError();
+    }
+    return (await this.get(rows[0].id))!;
+  }
+
   async stageVerification(input: {
     resourceId: string;
     runId: string;

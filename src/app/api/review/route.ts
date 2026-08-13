@@ -7,8 +7,10 @@ export async function POST(request: Request): Promise<Response> {
     const { userId } = await auth();
     if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
     await requireWorkspaceRole(userId, "reviewer");
-    const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction; fields?: string[]; reason: string };
-    const candidate = await reviewRepository.decide({ ...body, reviewerSubject: userId });
+    const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction | "edit"; fields?: string[]; proposedValues?: Record<string, string>; reason: string };
+    const candidate = body.action === "edit"
+      ? await reviewRepository.supersede({ candidateId: body.candidateId, expectedRevision: body.expectedRevision, proposedValues: body.proposedValues ?? {}, actorSubject: userId, reason: body.reason })
+      : await reviewRepository.decide({ ...body, action: body.action, reviewerSubject: userId });
     return Response.json(candidate);
   } catch (error) {
     const status = error instanceof RevisionConflictError ? 409 : error instanceof WorkspaceAuthorizationError ? 403 : error instanceof WorkspaceTargetError ? 503 : 400;
