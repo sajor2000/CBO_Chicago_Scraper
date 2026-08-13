@@ -1,5 +1,7 @@
 export type CandidateStatus = "staged" | "deferred" | "rejected" | "approved" | "publish_pending" | "published" | "publish_failed";
-export type CandidateAction = "approved" | "rejected" | "deferred";
+import type { ReviewDecision } from "../domain/review-workspace.ts";
+
+export type CandidateAction = ReviewDecision;
 export type FieldValues = Record<string, string>;
 
 export interface ReviewCandidate {
@@ -52,7 +54,12 @@ export class InMemoryReviewRepository {
   }
 
   list(limit = 50): ReviewCandidate[] {
-    return [...this.#candidates.values()].slice(0, Math.max(1, Math.min(limit, 100))).map(clone);
+    const candidates: ReviewCandidate[] = [];
+    for (const candidate of this.#candidates.values()) {
+      candidates.push(clone(candidate));
+      if (candidates.length >= Math.max(1, Math.min(limit, 100))) break;
+    }
+    return candidates;
   }
 
   history(candidateId: string): ReviewCandidate[] {
@@ -94,7 +101,7 @@ export class InMemoryReviewRepository {
   }
 
   #record(candidate: ReviewCandidate) {
-    const history = [...(this.#history.get(candidate.id) ?? [])];
+    const history = this.#history.get(candidate.id) ?? [];
     const index = history.findIndex((entry) => entry.revision === candidate.revision);
     if (index >= 0) history[index] = clone(candidate);
     else history.push(clone(candidate));

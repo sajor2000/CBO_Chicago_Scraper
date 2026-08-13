@@ -44,13 +44,17 @@ export const matchesIdentity = (resource: ReferenceResource, values?: EvidenceVa
   same(resource.name, values?.name) && (!values?.address || !resource.address || same(resource.address, values.address));
 
 const agreedValue = (observations: readonly CapturedObservation[], field: keyof EvidenceValues): { value: string; providers: string[] } | undefined => {
-  const values = observations
-    .filter((observation) => observation.state === "success")
-    .map((observation) => ({ provider: observation.provider, value: observation.values?.[field] }))
-    .filter((entry): entry is { provider: CapturedObservation["provider"]; value: string } => typeof entry.value === "string" && entry.value.length > 0);
-  for (const entry of values) {
-    const providers = values.filter((candidate) => same(candidate.value, entry.value)).map((candidate) => candidate.provider);
-    if (providers.includes("firecrawl") && providers.includes("google_places")) return { value: entry.value, providers };
+  const groups = new Map<string, { value: string; providers: CapturedObservation["provider"][] }>();
+  for (const observation of observations) {
+    const value = observation.state === "success" ? observation.values?.[field] : undefined;
+    if (!value) continue;
+    const key = normalizeEvidenceText(value);
+    const group = groups.get(key) ?? { value, providers: [] };
+    group.providers.push(observation.provider);
+    groups.set(key, group);
+  }
+  for (const group of groups.values()) {
+    if (group.providers.includes("firecrawl") && group.providers.includes("google_places")) return group;
   }
   return undefined;
 };

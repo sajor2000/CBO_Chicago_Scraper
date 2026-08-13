@@ -1,10 +1,10 @@
 import { authorizeReviewer, FixtureModeError, fixtureUserFromHeader } from "../../../lib/auth.ts";
-import { reviewRepository, RevisionConflictError } from "../../../lib/repositories/review.ts";
+import { reviewRepository, RevisionConflictError, type CandidateAction } from "../../../lib/repositories/review.ts";
 
 export async function POST(request: Request): Promise<Response> {
   try {
     const reviewer = authorizeReviewer(fixtureUserFromHeader(request));
-    const body = await request.json() as { candidateId: string; expectedRevision: number; action: "approved" | "rejected" | "deferred"; fields?: string[]; reason: string };
+    const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction; fields?: string[]; reason: string };
     const candidate = reviewRepository.decide({ ...body, reviewerEmail: reviewer.email });
     return Response.json(candidate);
   } catch (error) {
