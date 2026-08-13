@@ -1,8 +1,8 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
-export default clerkMiddleware(async (auth, request) => {
-  const { pathname } = request.nextUrl;
-  if (pathname === "/review" || pathname.startsWith("/review/") || pathname === "/api" || pathname.startsWith("/api/")) await auth.protect();
+export default clerkMiddleware(() => {
+  // Protected resources check auth themselves so document requests can redirect
+  // to the app's explicit /sign-in route before Clerk's dev-browser guard runs.
 });
 
 export const config = {

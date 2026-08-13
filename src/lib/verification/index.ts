@@ -11,6 +11,7 @@ export interface ReferenceResource {
   phone?: string;
   url?: string;
   status?: "open" | "closed" | "unknown";
+  sourcePayload?: Record<string, unknown>;
 }
 
 export interface AiAdvisory {
@@ -18,6 +19,7 @@ export interface AiAdvisory {
   mergeWithResourceId?: string;
   close?: boolean;
   rationale?: string;
+  officialValues?: Pick<EvidenceValues, "name" | "address" | "phone">;
 }
 
 export interface FieldDiff {

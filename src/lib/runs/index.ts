@@ -141,10 +141,11 @@ export class NeonRunRegistry {
   }
 
   async launch(input: { idempotencyKey: string; selection: string[]; budget: number }): Promise<VerificationRun> {
-    if (!input.idempotencyKey || input.budget < 1 || input.selection.length > 100) {
+    const selection = [...new Set(input.selection)];
+    if (!input.idempotencyKey || !selection.length || input.budget < 1 || input.budget > selection.length || selection.length > 100) {
       throw new Error("A positive budget, idempotency key, and at most 100 selected resources are required.");
     }
-    if (input.selection.some((resourceId) => !isUuid(resourceId))) throw new Error("Selected resource IDs must be UUIDs.");
+    if (selection.some((resourceId) => !isUuid(resourceId))) throw new Error("Selected resource IDs must be UUIDs.");
     const rows = await this.#query<{ id: string }>(`
       with inserted_run as (
         insert into review_workspace.verification_runs (idempotency_key, trigger_kind, run_parameters)
@@ -167,7 +168,7 @@ export class NeonRunRegistry {
       union all
       select id from review_workspace.verification_runs where idempotency_key = $1
       limit 1
-    `, [input.idempotencyKey, JSON.stringify(input.selection), input.budget, JSON.stringify(blankReport()), input.selection]);
+    `, [input.idempotencyKey, JSON.stringify(selection), input.budget, JSON.stringify(blankReport()), selection]);
     const runId = rows[0]?.id ?? (await this.#query<{ id: string }>(
       "select id from review_workspace.verification_runs where idempotency_key = $1",
       [input.idempotencyKey]
