@@ -10,4 +10,4 @@ Azure OpenAI credentials are scoring-only Vercel secrets. `AZURE_EXPORT_MAPPING_
 
 Raw evidence may include page content and contact information. Retain only evidence needed to support a review decision, restrict access, redact tokens/cookies/authorization headers, and delete it under the retention policy in [operations.md](operations.md).
 
-The current fixture-only implementation has no production-write module or production credential path. Do not treat it as authorization to connect a production database.
+The review app has no production-write module or production credential path. Do not treat it as authorization to connect a production database. Put provider/source/export secrets only in Vercel Production; Preview must receive none of them.

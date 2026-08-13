@@ -2,7 +2,7 @@
 
 ## Current boundary
 
-This is a fixture-only review workspace. A run creates an in-memory report; it does not call providers, persist a hosted run, or write to ChicagoHealthMap production. CI runs only `npm ci` and `npm run check`.
+The app has durable Neon review/run repositories and a manual, one-checkpoint hosted worker. It calls Firecrawl, Google Places, Tavily, optional approved IRS/directory endpoints, and Azure OpenAI only when the matching Vercel Production secrets are present. It never writes ChicagoHealthMap production. CI runs only `npm ci` and `npm run check`.
 
 ## Roles
 
@@ -17,7 +17,7 @@ Follow [source-policy.md](source-policy.md): official sites are primary, Google 
 
 ## Cost and monitoring
 
-Before enabling hosted providers, set provider-specific spend caps and request limits in the deployment environment. Record each run's selected resources, duration, provider limit/failure events, estimated cost, candidate decisions, blocked-source rate, and publication result in the non-production review database. Alert the service owner on budget exhaustion, repeated provider failures, or a source-policy violation.
+Before enabling hosted providers, set provider-specific spend caps and request limits in the deployment environment. Start with an explicitly bounded manual selection and run `POST /api/runs/{runId}/execute` once per checkpoint; its lease prevents duplicate completion. Record each run's selected resources, duration, provider limit/failure events, estimated cost, candidate decisions, blocked-source rate, and export result in the non-production review database. Alert the service owner on budget exhaustion, repeated provider failures, or a source-policy violation.
 
 ## Incident, rollback, and emergency stop
 
@@ -29,4 +29,4 @@ Before enabling hosted providers, set provider-specific spend caps and request l
 
 ## Azure handoff gate
 
-Azure export is unavailable until the directory owner has supplied and approved the target table, primary key, optimistic version field, allowlisted column map, backup owner, and a schema-matched non-production database. A generated SQL file is reviewed and applied manually by an Azure operator. Any target-version mismatch must roll back the transaction; the Vercel app has no Azure production credential.
+Azure export remains disabled until the directory owner has supplied and approved the target table, primary key, optimistic version field, allowlisted column map, backup owner, and a schema-matched non-production database. The included SQL builder is not an export endpoint; enabling one requires the contract, an approved candidate-to-target mapping, test-copy rehearsal, and a downloadable artifact receipt. A generated SQL file is reviewed and applied manually by an Azure operator. Any target-version mismatch must roll back the transaction; the Vercel app has no Azure production credential.
