@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   CboSourceProfileError,
@@ -83,4 +84,9 @@ test("profiles only the approved normalized view and never includes source detai
     () => profileCboSource({ ...config, table: "public.unapproved_view" }, { query: async () => [{ relkind: "v" }] } as never),
     CboSourceProfileError
   );
+});
+
+test("source-profile documentation links to the checked-in view SQL", () => {
+  const profile = readFileSync(new URL("../docs/data/cbo-source-profile.md", import.meta.url), "utf8");
+  assert.match(profile, /\.\.\/\.\.\/sql\/source\/cbo_public_directory_v1\.sql/);
 });

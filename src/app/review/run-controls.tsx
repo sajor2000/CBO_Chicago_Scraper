@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Totals = {
   recordsChecked: number;
@@ -28,12 +28,32 @@ const blankTotals = (): Totals => ({
 const summarize = (totals: Totals) =>
   `${totals.recordsChecked} checked · ${totals.candidatesStaged} candidate(s) · ${totals.conflicts} conflict(s) · ${totals.unableToVerify} unable to verify · ${totals.providerFailures} provider failure(s)`;
 
+const activeRunStorageKey = "cbo-verification-active-run";
+
 export function RunControls({ resources }: { resources: Array<{ id: string; name: string }> }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string>();
   const cancelRequested = useRef(false);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(activeRunStorageKey) ?? "null") as { id?: unknown; selection?: unknown } | null;
+      if (typeof saved?.id === "string" && Array.isArray(saved.selection) && saved.selection.every((id) => typeof id === "string")) {
+        setActiveRunId(saved.id);
+        setSelected(saved.selection);
+        setMessage("An unfinished pilot is ready to resume.");
+      }
+    } catch {
+      sessionStorage.removeItem(activeRunStorageKey);
+    }
+  }, []);
+
+  const clearActiveRun = () => {
+    setActiveRunId(undefined);
+    sessionStorage.removeItem(activeRunStorageKey);
+  };
 
   const toggle = (id: string) => setSelected((current) => current.includes(id)
     ? current.filter((value) => value !== id)
@@ -53,6 +73,7 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
         setMessage(body.error ?? "Could not cancel the run. Try again.");
         return;
       }
+      clearActiveRun();
       setMessage("Run cancelled. Refreshing the queue…");
       window.location.assign("/review");
     } catch {
@@ -65,22 +86,36 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
     if (busy) return;
     cancelRequested.current = false;
     setBusy(true);
-    setActiveRunId(undefined);
     const totals = blankTotals();
-    setMessage(`Starting verification for ${selected.length} resource${selected.length === 1 ? "" : "s"}…`);
+    setMessage(`${activeRunId ? "Resuming" : "Starting"} verification for ${selected.length} resource${selected.length === 1 ? "" : "s"}…`);
     try {
-      const idempotencyKey = crypto.randomUUID();
-      const response = await fetch("/api/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idempotencyKey, selection: selected, budget: selected.length })
-      });
-      const run = await response.json() as { id?: string; error?: string };
-      if (!response.ok || !run.id) {
-        setMessage(run.error ?? "Could not start the run.");
-        return;
+      let runId = activeRunId;
+      if (runId) {
+        const response = await fetch("/api/runs", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId, action: "resume" })
+        });
+        const run = await response.json().catch(() => ({})) as { error?: string };
+        if (!response.ok) {
+          setMessage(run.error ?? "Could not resume the run.");
+          return;
+        }
+      } else {
+        const response = await fetch("/api/runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), selection: selected, budget: selected.length })
+        });
+        const run = await response.json() as { id?: string; error?: string };
+        if (!response.ok || !run.id) {
+          setMessage(run.error ?? "Could not start the run.");
+          return;
+        }
+        runId = run.id;
+        setActiveRunId(runId);
+        sessionStorage.setItem(activeRunStorageKey, JSON.stringify({ id: runId, selection: selected }));
       }
-      setActiveRunId(run.id);
 
       for (let index = 0; index < selected.length; index += 1) {
         if (cancelRequested.current) {
@@ -89,7 +124,7 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
           return;
         }
         setMessage(`Checking ${index + 1} of ${selected.length}… ${summarize(totals)}`);
-        const execution = await fetch(`/api/runs/${run.id}/execute`, {
+        const execution = await fetch(`/api/runs/${runId}/execute`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ limit: 1 })
@@ -118,6 +153,7 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
 
       setMessage(`Pilot complete: ${summarize(totals)}. Refreshing the queue…`);
       setSelected([]);
+      clearActiveRun();
       window.location.assign("/review");
     } catch {
       setMessage(`The verification run could not be completed after ${summarize(totals)}. Check your connection, then refresh the queue.`);
@@ -146,7 +182,7 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
           <input
             type="checkbox"
             checked={selected.includes(resource.id)}
-            disabled={busy || (!selected.includes(resource.id) && selected.length >= 10)}
+            disabled={busy || Boolean(activeRunId) || (!selected.includes(resource.id) && selected.length >= 10)}
             onChange={() => toggle(resource.id)}
           />
           <span>{resource.name}</span>
@@ -155,7 +191,7 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
     </div>
     <div className="actions">
       <button type="button" className="primary-button" onClick={() => void start()} disabled={!selected.length || busy} aria-busy={busy}>
-        {busy ? "Checking…" : `Verify selected (${selected.length})`}
+        {busy ? "Checking…" : activeRunId ? `Resume selected (${selected.length})` : `Verify selected (${selected.length})`}
       </button>
       {busy && activeRunId ? (
         <button type="button" className="reject-button" onClick={() => void cancelActiveRun(activeRunId)}>

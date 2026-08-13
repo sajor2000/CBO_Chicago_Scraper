@@ -357,6 +357,7 @@ export class NeonReviewRepository {
   async stageVerification(input: {
     resourceId: string;
     runId: string;
+    leaseToken: string;
     kind: "update" | "closure_review" | "new_resource";
     beforeValues: FieldValues;
     proposedValues: FieldValues;
@@ -370,9 +371,17 @@ export class NeonReviewRepository {
     const rows = await this.#query<{ id: string }>(`
       with locked as (
         select pg_advisory_xact_lock(hashtextextended($1::text, 0))
+      ), active_checkpoint as (
+        select checkpoint.run_id
+        from review_workspace.run_checkpoints checkpoint
+        join review_workspace.run_current_state state on state.run_id = checkpoint.run_id
+        where checkpoint.run_id = $2::uuid and checkpoint.resource_id = $1::uuid
+          and checkpoint.lease_token = $8::uuid and checkpoint.state = 'leased'
+          and state.status = 'running'
+        for update of state
       ), snapshot as (
         select snapshots.id from review_workspace.resource_snapshots snapshots
-        cross join locked
+        cross join locked cross join active_checkpoint
         where snapshots.resource_id = $1::uuid order by snapshots.imported_at desc limit 1
       ), previous as (
         select state.candidate_id, state.candidate_revision_id, state.revision
@@ -389,7 +398,7 @@ export class NeonReviewRepository {
           (entry->>'observedAt')::timestamptz,
           coalesce(entry->'values', '{}'::jsonb),
           jsonb_build_object('state', entry->>'state', 'excerpt', entry->>'excerpt', 'sourceUrl', entry->>'sourceUrl')
-        from jsonb_array_elements($6::jsonb) entry
+        from jsonb_array_elements($6::jsonb) entry cross join active_checkpoint
         on conflict (provider, observation_key, observed_at) do nothing
       ), inserted_revision as (
         insert into review_workspace.candidate_revisions
@@ -415,8 +424,8 @@ export class NeonReviewRepository {
         returning candidate_id as id
       )
       select id from updated_state union all select id from inserted_state
-    `, [input.resourceId, input.runId, input.kind, JSON.stringify(input.beforeValues), JSON.stringify(input.proposedValues), JSON.stringify(observations), JSON.stringify(provenance)]);
-    if (!rows[0]) throw new Error("A seeded resource snapshot is required before staging review evidence.");
+    `, [input.resourceId, input.runId, input.kind, JSON.stringify(input.beforeValues), JSON.stringify(input.proposedValues), JSON.stringify(observations), JSON.stringify(provenance), input.leaseToken]);
+    if (!rows[0]) throw new Error("An active leased checkpoint and seeded resource snapshot are required before staging review evidence.");
     return (await this.get(rows[0].id))!;
   }
 

@@ -31,6 +31,12 @@ test("operator controls prevent a second launch while a pilot request is in flig
   assert.match(controls, /window\.location\.assign\("\/review"\)/);
 });
 
+test("operator controls preserve an unfinished run for recovery instead of relaunching it", () => {
+  const controls = readFileSync(new URL("../src/app/review/run-controls.tsx", import.meta.url), "utf8");
+  assert.match(controls, /sessionStorage/);
+  assert.match(controls, /action: "resume"/);
+});
+
 test("review queue mounts operator controls and human-readable candidate rows", () => {
   const page = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
   assert.match(page, /RunControls/);
