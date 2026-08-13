@@ -330,13 +330,17 @@ export class NeonReviewRepository {
       observations
     };
     const rows = await this.#query<{ id: string }>(`
-      with snapshot as (
-        select id from review_workspace.resource_snapshots
-        where resource_id = $1::uuid order by imported_at desc limit 1
+      with locked as (
+        select pg_advisory_xact_lock(hashtextextended($1::text, 0))
+      ), snapshot as (
+        select snapshots.id from review_workspace.resource_snapshots snapshots
+        cross join locked
+        where snapshots.resource_id = $1::uuid order by snapshots.imported_at desc limit 1
       ), previous as (
         select state.candidate_id, state.candidate_revision_id, state.revision
         from review_workspace.candidate_current_state state
         join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
+        cross join locked
         where revision.resource_id = $1::uuid
         order by state.updated_at desc limit 1
       ), observations as (
