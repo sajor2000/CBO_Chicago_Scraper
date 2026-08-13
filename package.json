@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "check": "npm run typecheck && npm test",
     "build": "next build",
     "apply:review-migrations": "psql \"$REVIEW_DATABASE_URL\" -v ON_ERROR_STOP=1 -f migrations/001_review_workspace.sql -f migrations/002_categories.sql -f migrations/003_neon_review_persistence.sql -f migrations/004_baseline_imports.sql -f migrations/005_azure_exports.sql -f migrations/006_expanded_categories.sql",
