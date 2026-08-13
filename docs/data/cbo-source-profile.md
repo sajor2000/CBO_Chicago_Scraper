@@ -19,7 +19,7 @@ The view uses stable namespaced IDs: `community_resource:<id>` and `wic:<wic_id>
 
 1. Use the temporary read-only profiling credential to run `npm run profile:cbo-source` for `public.community_resource_locations` (`id`) and `public.wic_locations` (`wic_id`). Review counts, null IDs, duplicates, and columns.
 2. Provision the separate `cbo_import_reader` role before applying the view SQL. Do not reuse the profiling credential for runtime import.
-3. Review and apply [cbo_public_directory_v1.sql](../sql/source/cbo_public_directory_v1.sql) in the mirror. This creates only a view and grants its existing runtime role `SELECT`; it does not change source rows.
+3. Review and apply [cbo_public_directory_v1.sql](../../sql/source/cbo_public_directory_v1.sql) in the mirror. This creates only a view and grants its existing runtime role `SELECT`; it does not change source rows.
 4. Profile `public.cbo_public_directory_v1` with `source_id`. It must have no null or duplicate source IDs.
 5. Set only `SOURCE_DATABASE_URL` (for `cbo_import_reader`) and `CBO_SOURCE_PROFILE=chicagohealthmap-public-v1` for the import command. A new public field requires a new named profile, reviewed view revision, and a new baseline receipt; operators cannot extend the field list through environment variables.
 
