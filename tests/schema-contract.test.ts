@@ -89,3 +89,12 @@ test("Neon persistence keeps immutable records separate from mutable review proj
   assert.match(schema, /create role review_workspace_app nologin/i);
   assert.match(schema, /grant usage on schema review_workspace to review_workspace_app/i);
 });
+
+test("baseline import receipts contain aggregate-only append-only outcomes", () => {
+  const schema = migration("004_baseline_imports.sql");
+  assert.match(schema, /create table (if not exists )?review_workspace\.baseline_import_receipts/i);
+  assert.match(schema, /outcome text not null check \(outcome in \('succeeded', 'failed'\)\)/i);
+  assert.match(schema, /inserted_snapshot_count integer not null/i);
+  assert.match(schema, /before update or delete on review_workspace\.baseline_import_receipts/i);
+  assert.match(schema, /grant select, insert on review_workspace\.baseline_import_receipts/i);
+});
