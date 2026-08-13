@@ -12,12 +12,18 @@ This is deliberately **not** an autonomous publisher. No scraper, Google result,
 4. Collects official-site evidence, Google Places corroboration, search/directory context, and bounded Azure OpenAI advisory scoring.
 5. Stages only reviewable deltas. Provider failures and conflicting signals remain evidence states, not public-directory changes.
 
+## Operator and reviewer experience
+
+The app needs a polished, simple interface for a small ChicagoHealthMap team—not an engineering console. It must let an operator manually start a bounded agentic crawling run, follow its progress and failure states, and hand reviewers a clear queue of evidence-backed field diffs. Reviewers should be able to understand the resource, sources, confidence, and proposed change on one screen before approving, rejecting, or deferring individual fields.
+
+After the manual pilot is accepted, the same durable workflow will run automatically **once every two months** through a Vercel cron job. Cron must enqueue the same checkpointed work as the manual trigger, prevent overlapping runs, obey provider budgets, and never bypass human review.
+
 ## Tech stack
 
 | Layer | Choice | Responsibility |
 | --- | --- | --- |
 | Web app | Next.js 16 + React 19 + TypeScript | Reviewer queue, operator controls, server routes |
-| Hosting | Vercel | Preview/production deployment and future cron entry point |
+| Hosting | Vercel | Preview/production deployment, manual trigger, and guarded every-two-month cron entry point |
 | Authentication | Clerk | Small-team sign-in; server-side reviewer/operator authorization |
 | Review database | Neon PostgreSQL + PostGIS | CBO/WIC copies and the `review_workspace` audit workflow |
 | Evidence storage | Vercel Blob | Private raw evidence artifacts when configured |
@@ -80,7 +86,7 @@ npm run build   # Production Next.js build
 3. Grant Clerk `reviewer` and `operator` roles in `review_workspace.reviewer_access`.
 4. Configure provider secrets in Vercel and run a one-record manual pilot from `/review`.
 5. Review the evidence and candidate UX before widening the batch.
-6. Keep cron disabled until the manual pilot, reviewer workflow, and cost guardrails are accepted.
+6. Keep cron disabled until the manual pilot, reviewer workflow, and cost guardrails are accepted; then enable the guarded every-two-month Vercel schedule.
 7. Build/test the manual Azure patch handoff only after the Azure schema/key/version contract and a non-production target are available.
 
 ## Cursor handoff

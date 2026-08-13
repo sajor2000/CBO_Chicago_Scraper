@@ -45,6 +45,7 @@ The current import path reduces both relations into a generic normalized snapsho
 - R8. Continue to enforce human review: evidence, AI scores, failed lookups, Google status, and source absence cannot directly change a copied directory record or become exportable.
 - R9. Keep approvals in the immutable `approved_for_future_export` state and document the required Azure table/key/version/backup/test-target contract for a later manual delta exporter.
 - R10. Keep Azure credentials, automatic Azure execution, full-table replacement, and a bi-monthly schedule absent from this delivery until the source refresh and manual verification pilot are accepted.
+- R11. Deliver a polished, accessible operator/reviewer UI for manually triggering a bounded agentic crawl, following run progress and provider failures, and reviewing field-level evidence in context. After acceptance, enable the exact same durable workflow on a guarded Vercel cron schedule every two months; cron must not overlap runs or bypass human approval.
 
 ### Actors
 
@@ -91,7 +92,7 @@ The current import path reduces both relations into a generic normalized snapsho
 - KTD2. **Use periodic extract-validate-merge refreshes, not logical replication**. The required cadence is bi-monthly, logical replication would require publisher-side configuration and can prevent Neon scale-to-zero, and the import needs a reviewable manifest before it becomes the active baseline. Governs R4, R5, R6.
 - KTD3. **Treat the mirror table DDL as a captured contract, not a guessed clone**. PostGIS must be installed and its version recorded first; the migration is generated/reviewed from a read-only source schema capture and fails closed on unexpected source or destination drift. Governs R2, R3, R5.
 - KTD4. **Preserve two identities**. A copied row is identified by source relation plus source primary key; the generic review resource links to that identity for audit, while an Azure patch maps independently to a confirmed target table/key/version contract. Governs R7, R9.
-- KTD5. **Keep Azure handoff as a gated manual follow-up** (session-settled: user-directed — chosen over direct Azure writes: the Azure team retains production authority). The Azure owner must first supply target dialect, table/key/version contract, backup owner, and schema-matched rehearsal target. Until then, approved subsets remain `approved_for_future_export` and the app has no Azure credentials or schedule. Governs R8, R9, R10.
+- KTD5. **Keep Azure handoff as a gated manual follow-up** (session-settled: user-directed — chosen over direct Azure writes: the Azure team retains production authority). The Azure owner must first supply target dialect, table/key/version contract, backup owner, and schema-matched rehearsal target. Until then, approved subsets remain `approved_for_future_export` and the app has no Azure credentials. The two-month cron remains disabled until its separate pilot-acceptance gate is met. Governs R8, R9, R10, R11.
 
 ### High-Level Technical Design
 
