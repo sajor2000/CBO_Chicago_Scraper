@@ -1,11 +1,16 @@
 import { authorizeCron } from "../../../lib/runs/cron.ts";
+import { executeCheckpoint } from "../../../lib/runs/execute-checkpoint.ts";
+import { runRegistry, RunLockError } from "../../../lib/runs/index.ts";
 
-/** Scheduling remains disabled in vercel.json until a manual dry run is accepted. */
+/** Vercel invokes one authenticated checkpoint; Neon leases prevent overlap. */
 export async function GET(request: Request): Promise<Response> {
   try {
     authorizeCron(request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null);
-    return Response.json({ scheduled: false, message: "Cron endpoint authorized; scheduled execution is not enabled." });
+    const run = await runRegistry.launchScheduled();
+    return Response.json({ scheduled: true, runId: run.id, ...(await executeCheckpoint(run.id)) });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Cron authorization failed." }, { status: 401 });
+    if (error instanceof RunLockError) return Response.json({ scheduled: true, skipped: true, message: "A checkpoint is already leased." }, { status: 202 });
+    const status = error instanceof Error && error.message === "Invalid cron authorization." ? 401 : 500;
+    return Response.json({ error: status === 401 ? "Cron authorization failed." : "Scheduled checkpoint failed." }, { status });
   }
 }
