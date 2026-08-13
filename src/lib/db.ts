@@ -33,7 +33,7 @@ export async function assertReviewWorkspace(query = reviewWorkspaceDb()) {
   if (!rows[0]?.is_review_workspace) throw new WorkspaceTargetError();
 }
 
-export async function requireWorkspaceRole(subject: string, role: "reviewer" | "operator") {
+export async function hasWorkspaceRole(subject: string, role: "reviewer" | "operator"): Promise<boolean> {
   const query = reviewWorkspaceDb();
   await assertReviewWorkspace(query);
   const rows = await query`
@@ -42,5 +42,9 @@ export async function requireWorkspaceRole(subject: string, role: "reviewer" | "
       where subject = ${subject} and role = ${role} and revoked_at is null
     ) as is_allowed
   ` as Array<{ is_allowed: boolean }>;
-  if (!rows[0].is_allowed) throw new WorkspaceAuthorizationError();
+  return Boolean(rows[0]?.is_allowed);
+}
+
+export async function requireWorkspaceRole(subject: string, role: "reviewer" | "operator") {
+  if (!(await hasWorkspaceRole(subject, role))) throw new WorkspaceAuthorizationError();
 }
