@@ -3,7 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "Chicago CBO Review",
+  title: "ChicagoHealthMap CBO Review",
   description: "Review-first verification workspace for Chicago community resources."
 };
 

@@ -7,5 +7,9 @@ test("Clerk middleware runs globally while review pages require authentication",
   const reviewPage = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
   assert.match(proxy, /@clerk\/nextjs\/server/);
   assert.match(proxy, /clerkMiddleware/);
-  assert.match(reviewPage, /Authentication required/);
+  assert.match(reviewPage, /Sign in required/);
+  assert.match(reviewPage, /RunControls/);
+  assert.match(reviewPage, /hasWorkspaceRole\(userId, "operator"\)/);
+  assert.match(reviewPage, /hasWorkspaceRole\(userId, "reviewer"\)/);
+  assert.match(reviewPage, /!isReviewer && !isOperator/);
 });

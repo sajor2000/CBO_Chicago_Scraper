@@ -10,12 +10,16 @@ export interface ReviewCandidate {
   id: string;
   revision: number;
   status: CandidateStatus;
+  resourceName?: string;
+  kind?: "update" | "closure_review" | "new_resource";
   proposedValues: FieldValues;
   beforeValues?: FieldValues;
   approvedValues?: FieldValues;
   evidence: string[];
   decisions: ReviewDecisionRecord[];
 }
+
+export type SeededResourceSummary = { id: string; name: string };
 
 export interface ReviewDecisionRecord {
   revision: number;
@@ -126,6 +130,8 @@ type CandidateRow = {
   id: string;
   revision: number;
   status: "staged" | "deferred" | "rejected" | "approved_for_future_export";
+  resource_name: string | null;
+  kind: "update" | "closure_review" | "new_resource" | null;
   proposed_values: FieldValues;
   before_values: FieldValues;
   approved_field_paths: string[];
@@ -140,10 +146,21 @@ type CandidateRow = {
   }>;
 };
 
+const snapshotNameExpression = `
+  coalesce(
+    nullif(snapshot.source_payload->>'organization_name', ''),
+    nullif(snapshot.source_payload->>'location_name', ''),
+    nullif(snapshot.source_payload->>'name', ''),
+    resource.reference_source_id
+  )
+`;
+
 const fromRow = (row: CandidateRow): ReviewCandidate => ({
   id: row.id,
   revision: row.revision,
   status: row.status === "approved_for_future_export" ? "approved" : row.status,
+  resourceName: row.resource_name ?? undefined,
+  kind: row.kind ?? undefined,
   proposedValues: row.proposed_values,
   beforeValues: row.before_values,
   approvedValues: row.status === "approved_for_future_export"
@@ -165,6 +182,8 @@ const candidateSelect = `
     state.candidate_id as id,
     state.revision,
     state.status,
+    revision.kind,
+    ${snapshotNameExpression} as resource_name,
     revision.proposed_values,
     revision.before_values,
     state.approved_field_paths,
@@ -185,6 +204,11 @@ const candidateSelect = `
     ), '[]'::jsonb) as decisions
   from review_workspace.candidate_current_state state
   join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
+  left join review_workspace.resources resource on resource.id = revision.resource_id
+  left join lateral (
+    select source_payload from review_workspace.resource_snapshots
+    where resource_id = revision.resource_id order by imported_at desc limit 1
+  ) snapshot on true
 `;
 
 /** Durable production repository. In-memory fixtures above remain intentionally synchronous. */
@@ -218,6 +242,20 @@ export class NeonReviewRepository {
     `, [resourceId]);
     const row = rows[0];
     return row && { id: row.id, payload: row.source_payload };
+  }
+
+  async listSeededResources(limit = 100): Promise<SeededResourceSummary[]> {
+    const rows = await this.#query<{ id: string; name: string }>(`
+      select resource.id, ${snapshotNameExpression} as name
+      from review_workspace.resources resource
+      join lateral (
+        select source_payload from review_workspace.resource_snapshots
+        where resource_id = resource.id order by imported_at desc limit 1
+      ) snapshot on true
+      order by name asc
+      limit $1
+    `, [Math.max(1, Math.min(limit, 100))]);
+    return rows.map((row) => ({ id: row.id, name: row.name }));
   }
 
   async assertBaselineReady(): Promise<void> {
