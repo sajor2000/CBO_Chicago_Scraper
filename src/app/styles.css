@@ -3,3 +3,14 @@ body { margin: 0; background: #f5f7f8; color: #16202a; }
 main { max-width: 52rem; margin: 3rem auto; padding: 2rem; background: white; border-radius: .75rem; box-shadow: 0 1px 3px #0002; }
 h1 { margin-top: 0; }
 code, pre { overflow-wrap: anywhere; white-space: pre-wrap; }
+.candidate-list { list-style: none; padding: 0; display: grid; gap: .75rem; }
+.candidate-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem 1rem; border: 1px solid #dce3e8; padding: 1rem; border-radius: .5rem; }
+.candidate-list span:last-child { grid-column: 1 / -1; color: #4c5a66; }
+dl { display: grid; grid-template-columns: minmax(10rem, 1fr) 2fr; gap: .5rem 1rem; }
+dt { font-weight: 700; } dd { margin: 0; }
+.review-actions { margin-top: 2rem; border-top: 1px solid #dce3e8; padding-top: 1rem; }
+.review-actions fieldset, .review-actions label { display: grid; gap: .5rem; margin: 1rem 0; }
+.review-actions textarea { min-height: 5rem; font: inherit; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+button { font: inherit; padding: .5rem .75rem; cursor: pointer; }
+@media (max-width: 600px) { main { margin: 1rem; padding: 1rem; } dl { grid-template-columns: 1fr; gap: .2rem; } }
