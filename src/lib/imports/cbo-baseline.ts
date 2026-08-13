@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import { assertReviewWorkspace, reviewWorkspaceDb } from "../db.ts";
-
-const identifier = /^[A-Za-z_][A-Za-z0-9_]*$/;
+import { approvedCboSourceProfile, isPostgresIdentifier, quotePostgresIdentifier } from "./cbo-source-profile.ts";
 
 export type CboSourceConfig = {
   databaseUrl: string;
+  profileName: string;
   sourceName: string;
   table: string;
   idColumn: string;
@@ -31,30 +31,46 @@ export class CboBaselineImportError extends Error {
 }
 
 export function sourceConfigFromEnv(env: Record<string, string | undefined> = process.env): CboSourceConfig {
-  const fields = env.CBO_SOURCE_FIELDS?.split(",").map((field) => field.trim()).filter(Boolean) ?? [];
+  const profileName = env.CBO_SOURCE_PROFILE ?? "";
+  let profile;
+  try {
+    profile = approvedCboSourceProfile(profileName);
+  } catch {
+    throw new CboBaselineImportError("CBO source profile is not approved.");
+  }
   const config = {
     databaseUrl: env.SOURCE_DATABASE_URL ?? "",
-    sourceName: env.CBO_SOURCE_NAME ?? "",
-    table: env.CBO_SOURCE_TABLE ?? "",
-    idColumn: env.CBO_SOURCE_ID_COLUMN ?? "",
-    fields
+    profileName: profile.name,
+    sourceName: profile.sourceName,
+    table: profile.table,
+    idColumn: profile.idColumn,
+    fields: [...profile.fields]
   };
   validateConfig(config);
   return config;
 }
 
 export function validateConfig(config: CboSourceConfig) {
-  if (!config.databaseUrl || !config.sourceName.trim() || !config.idColumn || config.fields.length === 0) {
+  if (!config.databaseUrl || !config.profileName || !config.sourceName.trim() || !config.idColumn || config.fields.length === 0) {
     throw new CboBaselineImportError("CBO baseline import configuration is incomplete.");
   }
+  let profile;
+  try {
+    profile = approvedCboSourceProfile(config.profileName);
+  } catch {
+    throw new CboBaselineImportError("CBO source profile is not approved.");
+  }
+  if (config.sourceName !== profile.sourceName || config.table !== profile.table || config.idColumn !== profile.idColumn || config.fields.join(",") !== profile.fields.join(",")) {
+    throw new CboBaselineImportError("CBO source configuration must match its approved profile.");
+  }
   const parts = config.table.split(".");
-  if (parts.length !== 2 || !parts.every((part) => identifier.test(part))) {
+  if (parts.length !== 2 || !parts.every(isPostgresIdentifier)) {
     throw new CboBaselineImportError("CBO source table must be schema-qualified.");
   }
   if (["pg_catalog", "information_schema"].includes(parts[0])) {
     throw new CboBaselineImportError("CBO source table must not use a system schema.");
   }
-  if (!identifier.test(config.idColumn) || !config.fields.every((field) => identifier.test(field))) {
+  if (!isPostgresIdentifier(config.idColumn) || !config.fields.every(isPostgresIdentifier)) {
     throw new CboBaselineImportError("CBO source identifiers must be valid PostgreSQL identifiers.");
   }
   if (new Set(config.fields).size !== config.fields.length) {
@@ -89,18 +105,16 @@ export function preflightRows(rows: SourceRow[]) {
   }
 }
 
-const quoteIdentifier = (value: string) => `"${value}"`;
-
 export async function readSourceRows(config: CboSourceConfig, query: NeonQueryFunction<false, false> = neon(config.databaseUrl)): Promise<SourceRow[]> {
   validateConfig(config);
   const [schema, table] = config.table.split(".") as [string, string];
   const relation = await query.query(
-    `select c.relkind = 'r' as is_base_table
+    `select c.relkind = 'v' as is_profile_relation
      from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
      where n.nspname = $1 and c.relname = $2`,
     [schema, table]
-  ) as Array<{ is_base_table: boolean }>;
-  if (!relation[0]?.is_base_table) throw new CboBaselineImportError("Configured CBO source table is unavailable.");
+  ) as Array<{ is_profile_relation: boolean }>;
+  if (!relation[0]?.is_profile_relation) throw new CboBaselineImportError("Configured CBO source table is unavailable.");
 
   const requestedColumns = [config.idColumn, ...config.fields];
   const columns = await query.query(
@@ -112,10 +126,10 @@ export async function readSourceRows(config: CboSourceConfig, query: NeonQueryFu
     throw new CboBaselineImportError("Configured CBO source columns are unavailable.");
   }
 
-  const jsonPairs = config.fields.flatMap((field) => [`'${field}'`, quoteIdentifier(field)]).join(", ");
+  const jsonPairs = config.fields.flatMap((field) => [`'${field}'`, quotePostgresIdentifier(field)]).join(", ");
   const rows = await query.query(
-    `select ${quoteIdentifier(config.idColumn)}::text as source_id, jsonb_build_object(${jsonPairs}) as payload
-     from ${quoteIdentifier(schema)}.${quoteIdentifier(table)}`
+    `select ${quotePostgresIdentifier(config.idColumn)}::text as source_id, jsonb_build_object(${jsonPairs}) as payload
+     from ${quotePostgresIdentifier(schema)}.${quotePostgresIdentifier(table)}`
   ) as Array<{ source_id: string | null; payload: Record<string, unknown> }>;
   return rows.map((row) => ({ sourceId: row.source_id ?? "", payload: row.payload }));
 }
