@@ -5,6 +5,6 @@ import test from "node:test";
 test("Clerk protects review and API routes before handlers run", () => {
   const proxy = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8");
   assert.match(proxy, /@clerk\/nextjs\/server/);
-  assert.match(proxy, /"\/review\(\.\*\)"/);
-  assert.match(proxy, /"\/api\(\.\*\)"/);
+  assert.match(proxy, /pathname === "\/review"/);
+  assert.match(proxy, /pathname === "\/api"/);
 });
