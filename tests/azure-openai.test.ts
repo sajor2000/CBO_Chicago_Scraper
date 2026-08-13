@@ -17,6 +17,8 @@ test("Azure OpenAI scorer sends bounded evidence and accepts only structured adv
   assert.equal(result.identity, 88);
   assert.equal(result.suggestedCategory, "food_pantry");
   assert.ok(requestBody.length < 7000);
+  assert.equal(JSON.parse(requestBody).max_completion_tokens, 500);
+  assert.equal(JSON.parse(requestBody).temperature, undefined);
 });
 
 test("Azure OpenAI scorer fails closed on malformed responses", async () => {
