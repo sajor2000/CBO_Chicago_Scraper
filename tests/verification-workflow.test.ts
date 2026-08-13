@@ -38,5 +38,5 @@ test("AI advice cannot create categories, merge identities, or close a record", 
   const result = verifyResource({ resource, observations: [], advisory: { suggestedCategory: "invented", mergeWithResourceId: "other", close: true } });
   assert.equal(result.state, "no_change");
   assert.deepEqual(result.proposedValues, {});
-  assert.equal(result.advisory?.suggestedCategory, "invented");
+  assert.equal(result.advisory?.suggestedCategory, undefined);
 });

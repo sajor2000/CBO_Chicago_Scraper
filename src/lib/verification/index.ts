@@ -1,5 +1,6 @@
 import { normalizeEvidenceText, type CapturedObservation, type EvidenceValues } from "../retrieval/types.ts";
 import { scoreEvidence, type Scores } from "../scoring/index.ts";
+import { approvedCategory } from "../taxonomy/categories.ts";
 
 export type VerificationState = "no_change" | "candidate_update" | "conflict" | "unable_to_verify" | "potential_new_resource";
 
@@ -68,13 +69,14 @@ export const verifyResource = (input: {
   const observations = input.lead ? [...input.observations, input.lead] : input.observations;
   const resource = input.resource;
   const scores = scoreEvidence(resource ?? { name: input.lead?.values?.name ?? "" }, observations);
+  const advisory = input.advisory && { ...input.advisory, suggestedCategory: approvedCategory(input.advisory.suggestedCategory) };
   const base = {
     resourceId: resource?.id ?? null,
     diffs: [] as FieldDiff[],
     proposedValues: {} as EvidenceValues,
     observations,
     scores,
-    advisory: input.advisory
+    advisory
   };
 
   if (observations.some((observation) => unavailable.has(observation.state))) {
