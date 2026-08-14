@@ -525,10 +525,15 @@ export class NeonRunRegistry {
         set status = 'failed', completed_at = now()
         from review_workspace.verification_runs run
         where run.id in (select run_id from checkpoint) and cycle.id = run.cycle_id
+        returning cycle.id
       )
       update review_workspace.run_current_state state
       set status = 'failed', updated_at = now(), revision = revision + 1
       where state.run_id in (select run_id from checkpoint)
+        and (not exists (
+          select 1 from review_workspace.verification_runs run
+          where run.id = state.run_id and run.cycle_id is not null
+        ) or exists (select 1 from failed_cycle))
       returning state.run_id
     `, [runId, leaseToken]);
     if (!rows[0]) throw new RunLockError();
