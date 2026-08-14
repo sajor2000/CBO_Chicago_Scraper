@@ -1,7 +1,7 @@
 import { assertReviewWorkspace } from "../db.ts";
 import { reviewRepository } from "../repositories/review.ts";
 
-const requiredConfiguration = ["FIRECRAWL_API_KEY", "GOOGLE_MAPS_API_KEY", "TAVILY_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT", "CRON_SECRET"] as const;
+const requiredConfiguration = ["FIRECRAWL_API_KEY", "GOOGLE_MAPS_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT"] as const;
 
 export type VerificationReadiness = {
   ready: boolean;
@@ -9,7 +9,8 @@ export type VerificationReadiness = {
 };
 
 export function assertHostedVerificationConfigured(env: Record<string, string | undefined> = process.env): void {
-  const missing = requiredConfiguration.filter((name) => !env[name]);
+  const missing: string[] = requiredConfiguration.filter((name) => !env[name]);
+  if (!env.EXA_API_KEY && !env.TAVILY_API_KEY) missing.push("EXA_API_KEY or TAVILY_API_KEY");
   if (missing.length) throw new Error(`Hosted verification is not configured: ${missing.join(", ")}.`);
 }
 
