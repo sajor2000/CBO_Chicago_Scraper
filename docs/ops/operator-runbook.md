@@ -10,6 +10,10 @@ Before relying on the scheduled cohort, confirm the `/review` readiness checks a
 
 Resume only after the owner documents the cause and validates the fix with another one-resource canary. A cancelled or failed checkpoint is recoverable through the operator controls; never delete an audit record or edit a directory record to clear the queue. Escalate provider outages, workspace/readiness failures, or any suspected policy violation to the service owner.
 
+## Reviewer CBO-eligibility calibration
+
+Before deploying the reviewer eligibility UI, run `npm run apply:reviewer-cbo-eligibility-migration` against the dedicated review workspace. The migration is additive and safe for the prior app; deploy the new app only after it succeeds. Reviewers may optionally label a terminal approval or rejection as CBO eligible or not eligible. Deferred, edited, historical, and unassessed decisions are excluded from agreement counts. Calibration is a prospective quality signal, never an approval, closure, or publishing rule.
+
 ## Seed the current CBO directory
 
 Before selecting an import source, run `npm run profile:cbo-source` in the authorized source environment with `SOURCE_DATABASE_URL`, `CBO_SOURCE_TABLE`, and `CBO_SOURCE_ID_COLUMN`. It emits only the schema-qualified relation, column metadata, and aggregate ID/count checks; it never prints a connection string or CBO row. It accepts a base relation or the reviewed `public.cbo_public_directory_v1` view, but does not create or modify either one. Stop if the ID has nulls or duplicates, or if the profile does not match the intended public-directory relation.

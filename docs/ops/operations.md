@@ -19,6 +19,8 @@ Follow [source-policy.md](../policy/source-policy.md): official sites are primar
 
 Before enabling hosted providers, set provider-specific spend caps and request limits in the deployment environment. Start with an explicitly bounded manual selection and run `POST /api/runs/{runId}/execute` once per checkpoint; its lease prevents duplicate completion. Record each run's selected resources, duration, provider limit/failure events, estimated cost, candidate decisions, blocked-source rate, and export result in the non-production review database. Alert the service owner on budget exhaustion, repeated provider failures, or a source-policy violation. During the first 10-checkpoint canary, stop on any provider failure, more than 20% blocked/timeout/rate-limited checkpoints, unexpected candidate volume, or a reviewer finding that advisory rationale lacks captured-evidence support.
 
+Calibration begins only after explicit reviewer CBO-eligibility labels are available. Treat unlabeled and legacy decisions as non-comparable; do not infer a label from field approval or rejection. Review the first small labeled sample qualitatively before adopting any numerical quality threshold.
+
 ## Incident, rollback, and emergency stop
 
 1. Stop scheduled/manual work and preserve the run, evidence IDs, and audit trail.

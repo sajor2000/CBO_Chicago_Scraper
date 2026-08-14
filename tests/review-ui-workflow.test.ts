@@ -11,6 +11,16 @@ test("approval stores a field subset and stale decisions fail compare-and-swap",
   assert.throws(() => reviews.decide({ candidateId: candidate.id, expectedRevision: 1, reviewerSubject: "reviewer-2", action: "rejected", reason: "stale" }), RevisionConflictError);
 });
 
+test("CBO eligibility is an explicit terminal review label", () => {
+  const reviews = new InMemoryReviewRepository();
+  reviews.stage({ id: "cbo", proposedValues: { address: "2 New St" } });
+  const rejected = reviews.decide({ candidateId: "cbo", expectedRevision: 1, reviewerSubject: "reviewer-1", action: "rejected", reason: "Address is wrong, but the organization qualifies.", reviewerCboEligibility: true });
+  assert.equal(rejected.decisions[0]?.cboEligibility, true);
+  const deferred = new InMemoryReviewRepository();
+  deferred.stage({ id: "defer", proposedValues: { address: "2 New St" } });
+  assert.throws(() => deferred.decide({ candidateId: "defer", expectedRevision: 1, reviewerSubject: "reviewer-1", action: "deferred", reason: "Need more evidence.", reviewerCboEligibility: true }));
+});
+
 test("a superseding edit invalidates prior approval and retains the audit history", () => {
   const reviews = new InMemoryReviewRepository();
   reviews.stage({ id: "c2", proposedValues: { address: "2 New St" } });
@@ -75,4 +85,5 @@ test("review queue accepts bounded filters and detail includes human decision hi
   assert.match(repository, /with recursive lineage/);
   assert.match(repository, /'superseded'::text/);
   assert.match(repository, /provenance->'reviewerEdit'/);
+  assert.match(repository, /reviewer_cbo_eligibility/);
 });

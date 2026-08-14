@@ -12,10 +12,11 @@ export async function POST(request: Request): Promise<Response> {
     const { userId } = await auth();
     if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
     await requireWorkspaceRole(userId, "reviewer");
-    const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction | "edit"; fields?: string[]; proposedValues?: Record<string, string>; reason: string };
+    const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction | "edit"; fields?: string[]; proposedValues?: Record<string, string>; reason: string; reviewerCboEligibility?: unknown };
+    if (body.reviewerCboEligibility !== undefined && typeof body.reviewerCboEligibility !== "boolean") throw new Error("CBO eligibility must be a boolean.");
     const candidate = body.action === "edit"
       ? await reviewRepository.supersede({ candidateId: body.candidateId, expectedRevision: body.expectedRevision, proposedValues: body.proposedValues ?? {}, actorSubject: userId, reason: body.reason })
-      : await reviewRepository.decide({ ...body, action: body.action, reviewerSubject: userId });
+      : await reviewRepository.decide({ ...body, action: body.action, reviewerSubject: userId, reviewerCboEligibility: body.reviewerCboEligibility });
     return Response.json(candidate);
   } catch (error) {
     const status = error instanceof RevisionConflictError ? 409 : error instanceof WorkspaceAuthorizationError ? 403 : error instanceof WorkspaceTargetError ? 503 : 400;
