@@ -35,7 +35,7 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     }
     leaseToken = claim.leaseToken;
     const hostedEvidence = hostedEvidenceFromEnv();
-    const seeded = await reviewRepository.seededResource(claim.resourceId);
+    const seeded = await reviewRepository.seededResource(claim.resourceId, claim.snapshotId);
     if (!seeded) throw new Error("Selected resource has no seeded public snapshot.");
     const resource = referenceResourceFromSnapshot(seeded);
     const observations = await within(hostedEvidence.collect(resource), 30_000, "Evidence collection");
@@ -46,9 +46,9 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
       advisory,
       stage: (candidate) => reviewRepository.stageVerification({ resourceId: resource.id, runId, leaseToken: claim.leaseToken, ...candidate })
     });
-    await runRegistry.completeCheckpoint(runId, claim.leaseToken, output.report);
+    await runRegistry.completeCheckpoint(runId, claim.leaseToken, output.report, output.outcome);
     leaseToken = undefined;
-    const run = await runRegistry.get(runId);
+    const runStatus = await runRegistry.status(runId);
     return {
       recordsChecked: 1, budgetUsed: 1,
       candidatesStaged: output.report.candidatesStaged ?? 0,
@@ -56,7 +56,7 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
       unableToVerify: output.report.unableToVerify ?? 0,
       providerFailures: output.report.providerFailures ?? 0,
       state: output.result.state, reasons: output.result.reasons, resourceId: claim.resourceId,
-      done: run?.status === "completed" || run?.status === "cancelled", runStatus: run?.status
+      done: runStatus === "completed" || runStatus === "cancelled", runStatus
     };
   } catch (error) {
     if (leaseToken) {

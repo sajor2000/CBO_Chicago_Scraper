@@ -23,13 +23,13 @@ export async function PATCH(request: Request): Promise<Response> {
     const { userId } = await auth();
     if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
     await requireWorkspaceRole(userId, "operator");
-    const body = await request.json() as { runId: string; action: "cancel" | "resume" };
+    const body = await request.json() as { runId: string; action: "cancel" | "resume"; additionalBudget?: number };
     if (body.action !== "cancel" && body.action !== "resume") return Response.json({ error: "Unsupported run action." }, { status: 400 });
     if (body.action === "cancel") {
       await runRegistry.cancel(body.runId);
       return Response.json(await runRegistry.get(body.runId));
     }
-    return Response.json(await runRegistry.resume(body.runId));
+    return Response.json(await runRegistry.resume(body.runId, body.additionalBudget ?? 0));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Run update failed." }, { status: error instanceof WorkspaceAuthorizationError ? 403 : error instanceof WorkspaceTargetError ? 503 : 400 });
   }

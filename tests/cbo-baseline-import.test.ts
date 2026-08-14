@@ -4,10 +4,37 @@ import {
   CboBaselineImportError,
   canonicalJson,
   contentSha256,
+  importCboBaseline,
   preflightRows,
   readSourceRows,
   sourceConfigFromEnv
 } from "../src/lib/imports/cbo-baseline.ts";
+
+const sourceConfig = () => sourceConfigFromEnv({
+  SOURCE_DATABASE_URL: "postgres://private",
+  CBO_SOURCE_PROFILE: "chicagohealthmap-public-v1"
+});
+
+function fakeDestination(promoted: boolean) {
+  const queries: string[] = [];
+  const destination = Object.assign(
+    async (strings: TemplateStringsArray) => {
+      const sql = strings.join("");
+      queries.push(sql);
+      return sql.includes("workspace_sentinel") ? [{ is_review_workspace: true }] : [{ is_ready: true }];
+    },
+    {
+      query: async (sql: string) => {
+        queries.push(sql);
+        if (sql.includes("insert into review_workspace.refresh_manifests")) return [{ id: "00000000-0000-4000-8000-000000000001" }];
+        if (sql.includes("exists(select 1 from inserted_resource)")) return [{ inserted_resource: true, inserted_snapshot: true }];
+        if (sql.includes("promote_refresh_manifest")) return [{ promoted }];
+        return [];
+      }
+    }
+  );
+  return { destination, queries };
+}
 
 test("baseline configuration requires a named source profile before any database access", () => {
   assert.throws(
@@ -81,4 +108,34 @@ test("source projection uses literal allowlisted JSON keys and maps source rows"
   }), query as never);
   assert.deepEqual(rows, [{ sourceId: "42", payload: { name: "Example CBO" } }]);
   assert.match(queries[2], /jsonb_build_object\('organization_name', "organization_name",/);
+});
+
+test("baseline refresh promotes only after both source relations are receipted", async () => {
+  const { destination, queries } = fakeDestination(true);
+  const report = await importCboBaseline(sourceConfig(), {
+    readRows: async () => [
+      { sourceId: "cbo:1", payload: { source_relation: "community_resource_locations", organization_name: "CBO" } },
+      { sourceId: "wic:1", payload: { source_relation: "wic_locations", location_name: "WIC" } }
+    ],
+    destination: destination as never
+  });
+  assert.deepEqual(report, { sourceRows: 2, insertedResources: 2, insertedSnapshots: 2, unchanged: 0, skipped: 0, failed: 0 });
+  assert.equal(queries.filter((sql) => sql.includes("refresh_source_receipts")).length, 2);
+  assert.equal(queries.filter((sql) => sql.includes("promote_refresh_manifest")).length, 1);
+});
+
+test("unreconciled refresh is failed and cannot become the active baseline", async () => {
+  const { destination, queries } = fakeDestination(false);
+  await assert.rejects(
+    importCboBaseline(sourceConfig(), {
+      readRows: async () => [
+        { sourceId: "cbo:1", payload: { source_relation: "community_resource_locations", organization_name: "CBO" } },
+        { sourceId: "wic:1", payload: { source_relation: "wic_locations", location_name: "WIC" } }
+      ],
+      destination: destination as never
+    }),
+    /did not reconcile/i
+  );
+  assert.equal(queries.filter((sql) => sql.includes("promote_refresh_manifest")).length, 1);
+  assert.ok(queries.some((sql) => sql.includes("set status = 'failed'")));
 });

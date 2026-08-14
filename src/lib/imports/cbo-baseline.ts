@@ -135,6 +135,16 @@ export async function readSourceRows(config: CboSourceConfig, query: NeonQueryFu
 }
 
 type DestinationQuery = ReturnType<typeof reviewWorkspaceDb>;
+const sourceRelations = ["community_resource_locations", "wic_locations"] as const;
+type SourceRelation = typeof sourceRelations[number];
+
+function sourceRelation(row: SourceRow): SourceRelation {
+  const relation = row.payload.source_relation;
+  if (!sourceRelations.includes(relation as SourceRelation)) {
+    throw new CboBaselineImportError("Every refresh row must identify its CBO or WIC source relation.");
+  }
+  return relation as SourceRelation;
+}
 
 async function insertReceipt(
   query: DestinationQuery,
@@ -172,7 +182,7 @@ async function assertBaselineImportSchema(query: DestinationQuery) {
   }
 }
 
-async function importRow(query: DestinationQuery, config: CboSourceConfig, row: SourceRow) {
+async function importRow(query: DestinationQuery, config: CboSourceConfig, row: SourceRow, manifestId: string, relation: SourceRelation) {
   const payload = canonicalJson(row.payload);
   const version = sha256(payload);
   const result = await query.query(
@@ -203,10 +213,15 @@ async function importRow(query: DestinationQuery, config: CboSourceConfig, row: 
          resource_snapshot_id, content_sha256, redaction_policy_version, raw_object_reference
        ) select id, $3, 'public-directory-v1', null from snapshot
        on conflict (resource_snapshot_id) do nothing
+     ), frozen_membership as (
+       insert into review_workspace.refresh_snapshot_memberships
+         (manifest_id, resource_id, resource_snapshot_id, source_relation)
+       select $5::uuid, resource.id, snapshot.id, $6 from resource cross join snapshot
+       on conflict (manifest_id, resource_id) do nothing
      )
      select exists(select 1 from inserted_resource) as inserted_resource,
        exists(select 1 from inserted_snapshot) as inserted_snapshot`,
-    [config.sourceName, row.sourceId, version, payload]
+    [config.sourceName, row.sourceId, version, payload, manifestId, relation]
   ) as Array<{ inserted_resource: boolean; inserted_snapshot: boolean }>;
   return result[0];
 }
@@ -226,17 +241,51 @@ export async function importCboBaseline(
   await assertReviewWorkspace(destination);
   await assertBaselineImportSchema(destination);
   const report: BaselineImportReport = { sourceRows: rows.length, insertedResources: 0, insertedSnapshots: 0, unchanged: 0, skipped: 0, failed: 0 };
+  const relationRows = new Map(sourceRelations.map((relation) => [relation, 0]));
+  const manifestRows = await destination.query(
+    `insert into review_workspace.refresh_manifests (status, source_manifest_sha256)
+     values ('running', $1) returning id`,
+    [sha256(canonicalJson(rows.map((row) => ({ sourceId: row.sourceId, payload: row.payload }))))]
+  ) as Array<{ id: string }>;
+  const manifestId = manifestRows[0]?.id;
+  if (!manifestId) throw new CboBaselineImportError("Refresh manifest creation failed.");
   try {
-    for (const row of rows) {
-      const outcome = await importRow(destination, config, row);
-      if (outcome?.inserted_resource) report.insertedResources += 1;
-      if (outcome?.inserted_snapshot) report.insertedSnapshots += 1;
-      else report.unchanged += 1;
+    for (let offset = 0; offset < rows.length; offset += 20) {
+      const outcomes = await Promise.all(rows.slice(offset, offset + 20).map(async (row) => {
+        const relation = sourceRelation(row);
+        return { relation, outcome: await importRow(destination, config, row, manifestId, relation) };
+      }));
+      for (const { relation, outcome } of outcomes) {
+        relationRows.set(relation, relationRows.get(relation)! + 1);
+        if (outcome?.inserted_resource) report.insertedResources += 1;
+        if (outcome?.inserted_snapshot) report.insertedSnapshots += 1;
+        else report.unchanged += 1;
+      }
     }
+    for (const relation of sourceRelations) {
+      const count = relationRows.get(relation)!;
+      await destination.query(
+        `insert into review_workspace.refresh_source_receipts
+          (manifest_id, source_relation, outcome, source_row_count, copied_snapshot_count, discrepancy_count, error_code)
+         values ($1::uuid, $2, $3, $4, $4, $5, $6)`,
+        [manifestId, relation, count ? "succeeded" : "failed", count, count ? 0 : 1, count ? null : "source_omitted"]
+      );
+    }
+    const promoted = await destination.query(
+      "select review_workspace.promote_refresh_manifest($1::uuid) as promoted",
+      [manifestId]
+    ) as Array<{ promoted: boolean }>;
+    if (!promoted[0]?.promoted) throw new CboBaselineImportError("CBO/WIC refresh did not reconcile and was not promoted.");
   } catch (error) {
     report.failed = 1;
-    report.skipped = report.sourceRows - report.insertedSnapshots - report.unchanged - report.failed;
+    report.skipped = Math.max(0, report.sourceRows - report.insertedSnapshots - report.unchanged - report.failed);
     try {
+      await destination.query(
+        `update review_workspace.refresh_manifests
+         set status = 'failed', completed_at = now(), discrepancy_count = greatest(discrepancy_count, 1)
+         where id = $1::uuid and status = 'running'`,
+        [manifestId]
+      );
       await insertReceipt(destination, config, "failed", report, "destination_write_failed");
     } catch {
       // Preserve the original row-write failure when the receipt table is unavailable.
