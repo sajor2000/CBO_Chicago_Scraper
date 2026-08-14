@@ -31,7 +31,7 @@ The default service-location boundary is the seven-county Chicagoland/CMAP regio
 
 The app needs a polished, simple interface for a small ChicagoHealthMap team—not an engineering console. It must let an operator manually start a bounded agentic crawling run, follow its progress and failure states, and hand reviewers a clear queue of evidence-backed field diffs. Reviewers should be able to understand the resource, sources, confidence, and proposed change on one screen before approving, rejecting, or deferring individual fields.
 
-After the manual canary is accepted, the same durable workflow can run through the secured Vercel Cron endpoint. The checked-in five-minute schedule invokes one checkpoint for the monthly cohort; it prevents overlapping work, obeys provider budgets, and never bypasses human review.
+The checked-in five-minute Vercel Cron schedule invokes one checkpoint for the monthly cohort; it prevents overlapping work, obeys provider budgets, and never bypasses human review. Canary acceptance is an operational prerequisite for configuring production provider credentials and relying on that schedule, not an application-enforced Cron switch.
 
 ## Tech stack
 
