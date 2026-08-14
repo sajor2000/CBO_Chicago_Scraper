@@ -2,7 +2,7 @@
 
 Keep Clerk, Firecrawl, Google, search, AI, Neon, cron, and production-publisher credentials outside Git. Use the hosting platform's encrypted environment variables; production credentials exist only in the future publisher deployment, never in review or preview deployments.
 
-Use Clerk Free for the small review team. Configure allowed sign-in methods and invite reviewers in the Clerk Dashboard. Clerk protects `/review` and `/api`; Vercel can remain on its free Hobby plan because the application, rather than Vercel Deployment Protection, owns authentication.
+Use Clerk Free for the small review team. Configure allowed sign-in methods and invite reviewers in the Clerk Dashboard. Clerk protects `/review` and `/api`; Vercel Hobby can host previews and manual pilots because the application, rather than Vercel Deployment Protection, owns authentication. The five-minute production Cron requires a Vercel Pro or Enterprise project.
 
 Use separate least-privilege roles for the review database and future production publisher. Reviewers and run operators receive only their respective allowlist roles. Rotate a suspected secret immediately, revoke the old credential, inspect deployment and provider logs, and record the incident without copying the secret into tickets or chat.
 

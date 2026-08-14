@@ -2,7 +2,7 @@
 
 ## Current boundary
 
-The app has durable Neon review/run repositories and a manual, one-checkpoint hosted worker. It calls Firecrawl, Google Places, Tavily, optional approved IRS/directory endpoints, and Azure OpenAI only when the matching Vercel Production secrets are present. It never writes ChicagoHealthMap production. CI runs only `npm ci` and `npm run check`.
+The app has durable Neon review/run repositories and a one-checkpoint hosted worker for manual runs or the guarded production Cron. It calls Firecrawl, Google Places, Tavily, optional approved IRS/directory endpoints, and Azure OpenAI only when the matching Vercel Production secrets are present. It never writes ChicagoHealthMap production. CI runs only `npm ci` and `npm run check`.
 
 ## Roles
 
@@ -19,7 +19,7 @@ Follow [source-policy.md](../policy/source-policy.md): official sites are primar
 
 Before enabling hosted providers, set provider-specific spend caps and request limits in the deployment environment. Start with an explicitly bounded manual selection and run `POST /api/runs/{runId}/execute` once per checkpoint; its lease prevents duplicate completion. Record each run's selected resources, duration, provider limit/failure events, estimated cost, candidate decisions, blocked-source rate, and export result in the non-production review database. Alert the service owner on budget exhaustion, repeated provider failures, or a source-policy violation. During the first 10-checkpoint canary, stop on any provider failure, more than 20% blocked/timeout/rate-limited checkpoints, unexpected candidate volume, or a reviewer finding that advisory rationale lacks captured-evidence support.
 
-Calibration begins only after explicit reviewer CBO-eligibility labels are available. Treat unlabeled and legacy decisions as non-comparable; do not infer a label from field approval or rejection. Review the first small labeled sample qualitatively before adopting any numerical quality threshold.
+Calibration begins only after explicit reviewer CBO-eligibility labels are available. A label is accepted only on a terminal approval or rejection and is independent of the proposed field decision. Treat unlabeled, legacy, deferred, edited, and GPT `insufficient_evidence` records as non-comparable; do not infer a label from field approval or rejection. Review the first small labeled sample qualitatively before adopting any numerical quality threshold.
 
 ## Incident, rollback, and emergency stop
 
