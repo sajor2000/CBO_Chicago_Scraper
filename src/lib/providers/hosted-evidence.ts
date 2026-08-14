@@ -46,7 +46,7 @@ export async function collectHostedEvidence(input: {
 export function hostedEvidenceFromEnv() {
   const firecrawlKey = process.env.FIRECRAWL_API_KEY;
   const googleKey = process.env.GOOGLE_MAPS_API_KEY;
-  const searchKey = process.env.EXA_API_KEY ?? process.env.TAVILY_API_KEY;
+  const searchKey = process.env.EXA_API_KEY || process.env.TAVILY_API_KEY;
   if (!firecrawlKey || !googleKey || !searchKey) throw new Error("Firecrawl, Google Places, and one search fallback must be configured before a hosted run can execute.");
   const scorer = azureOpenAiScorerFromEnv();
   const allowlist = (process.env.FIRECRAWL_INTERACT_ALLOWLIST ?? "").split(",").map((domain) => domain.trim()).filter(Boolean);
