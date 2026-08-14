@@ -214,6 +214,11 @@ export class NeonRunRegistry {
     return rows[0] && fromRow(rows[0]);
   }
 
+  async listRecent(limit = 10): Promise<VerificationRun[]> {
+    const rows = await this.#query<RunRow>(`${runSelect} order by run.started_at desc limit $1`, [Math.max(1, Math.min(limit, 25))]);
+    return rows.map(fromRow);
+  }
+
   async claimNext(runId: string): Promise<{ resourceId: string; checkpoint: number; leaseToken: string } | undefined> {
     const rows = await this.#query<{ resource_id: string; ordinal: number; lease_token: string }>(`
       with completed as (

@@ -1,11 +1,24 @@
 export type CandidateStatus = "staged" | "deferred" | "rejected" | "approved" | "publish_pending" | "published" | "publish_failed";
 import type { ReviewDecision } from "../domain/review-workspace.ts";
 import type { AiAdvisory } from "../verification/index.ts";
+import { summarizeCalibration, type CalibrationSummary } from "../verification/calibration.ts";
 import { assertReviewWorkspace, requireWorkspaceRole, reviewWorkspaceDb } from "../db.ts";
 import { redactEvidence } from "../evidence/redaction.ts";
 
 export type CandidateAction = ReviewDecision;
 export type FieldValues = Record<string, string>;
+
+export type ReviewProvenance = {
+  observations: Array<{
+    provider: string;
+    state: string;
+    observedAt: string;
+    sourceUrl?: string;
+    excerpt?: string;
+    values?: FieldValues;
+  }>;
+  advisory?: Pick<AiAdvisory, "promptVersion" | "cboEligibility" | "operationalAssessment" | "evidenceQuality" | "citations" | "suggestedCategory" | "rationale">;
+};
 
 export interface ReviewCandidate {
   id: string;
@@ -17,10 +30,12 @@ export interface ReviewCandidate {
   beforeValues?: FieldValues;
   approvedValues?: FieldValues;
   evidence: string[];
+  provenance: ReviewProvenance;
   decisions: ReviewDecisionRecord[];
 }
 
 export type SeededResourceSummary = { id: string; name: string };
+export type ReviewQueueFilters = { limit?: number; status?: CandidateStatus; kind?: NonNullable<ReviewCandidate["kind"]>; evidenceQuality?: NonNullable<ReviewProvenance["advisory"]>["evidenceQuality"] };
 
 export interface ReviewDecisionRecord {
   revision: number;
@@ -55,9 +70,9 @@ export class InMemoryReviewRepository {
   #candidates = new Map<string, ReviewCandidate>();
   #history = new Map<string, ReviewCandidate[]>();
 
-  stage(input: { id: string; proposedValues: FieldValues; beforeValues?: FieldValues; evidence?: string[] }): ReviewCandidate {
+  stage(input: { id: string; proposedValues: FieldValues; beforeValues?: FieldValues; evidence?: string[]; provenance?: ReviewProvenance }): ReviewCandidate {
     if (this.#candidates.has(input.id)) throw new Error("Candidate already exists.");
-    const candidate: ReviewCandidate = { id: input.id, revision: 1, status: "staged", proposedValues: { ...input.proposedValues }, beforeValues: input.beforeValues && { ...input.beforeValues }, evidence: [...(input.evidence ?? [])], decisions: [] };
+    const candidate: ReviewCandidate = { id: input.id, revision: 1, status: "staged", proposedValues: { ...input.proposedValues }, beforeValues: input.beforeValues && { ...input.beforeValues }, evidence: [...(input.evidence ?? [])], provenance: structuredClone(input.provenance ?? { observations: [] }), decisions: [] };
     this.#candidates.set(input.id, candidate);
     this.#history.set(input.id, [clone(candidate)]);
     return clone(candidate);
@@ -68,11 +83,15 @@ export class InMemoryReviewRepository {
     return candidate && clone(candidate);
   }
 
-  list(limit = 50): ReviewCandidate[] {
+  list(input: number | ReviewQueueFilters = 50): ReviewCandidate[] {
+    const filters = typeof input === "number" ? { limit: input } : input;
     const candidates: ReviewCandidate[] = [];
     for (const candidate of this.#candidates.values()) {
+      if (filters.status && candidate.status !== filters.status) continue;
+      if (filters.kind && candidate.kind !== filters.kind) continue;
+      if (filters.evidenceQuality && candidate.provenance.advisory?.evidenceQuality !== filters.evidenceQuality) continue;
       candidates.push(clone(candidate));
-      if (candidates.length >= Math.max(1, Math.min(limit, 100))) break;
+      if (candidates.length >= Math.max(1, Math.min(filters.limit ?? 50, 100))) break;
     }
     return candidates;
   }
@@ -137,6 +156,7 @@ type CandidateRow = {
   before_values: FieldValues;
   approved_field_paths: string[];
   evidence: string[];
+  provenance: unknown;
   decisions: Array<{
     revision: number;
     action: CandidateAction;
@@ -145,6 +165,49 @@ type CandidateRow = {
     fields: string[];
     at: string;
   }>;
+};
+
+const stringValue = (value: unknown) => typeof value === "string" ? redactEvidence(value).slice(0, 6000) : undefined;
+const fieldValues = (value: unknown): FieldValues | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value).flatMap(([key, entry]) => {
+    const redacted = stringValue(entry);
+    return redacted === undefined ? [] : [[key, redacted] as const];
+  });
+  return entries.length ? Object.fromEntries(entries) : undefined;
+};
+
+/** Safe projection of immutable JSON provenance for the reviewer surface. */
+export const reviewProvenance = (value: unknown): ReviewProvenance => {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const observations = Array.isArray(source.observations) ? source.observations.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const observation = entry as Record<string, unknown>;
+    const provider = stringValue(observation.provider);
+    const state = stringValue(observation.state);
+    const observedAt = stringValue(observation.observedAt);
+    if (!provider || !state || !observedAt) return [];
+    const values = fieldValues(observation.values);
+    return [{ provider, state, observedAt, sourceUrl: stringValue(observation.sourceUrl), excerpt: stringValue(observation.excerpt), ...(values ? { values } : {}) }];
+  }) : [];
+  const rawAdvisory = source.advisory && typeof source.advisory === "object" && !Array.isArray(source.advisory) ? source.advisory as Record<string, unknown> : undefined;
+  if (!rawAdvisory) return { observations };
+  const citations = Array.isArray(rawAdvisory.citations) ? rawAdvisory.citations.flatMap((citation) => {
+    const redacted = stringValue(citation);
+    return redacted ? [redacted] : [];
+  }) : undefined;
+  return {
+    observations,
+    advisory: {
+      promptVersion: stringValue(rawAdvisory.promptVersion),
+      cboEligibility: rawAdvisory.cboEligibility === "confirmed_cbo" || rawAdvisory.cboEligibility === "likely_cbo" || rawAdvisory.cboEligibility === "not_a_cbo" || rawAdvisory.cboEligibility === "insufficient_evidence" ? rawAdvisory.cboEligibility : undefined,
+      operationalAssessment: rawAdvisory.operationalAssessment === "open" || rawAdvisory.operationalAssessment === "closure_suspected" || rawAdvisory.operationalAssessment === "unknown" ? rawAdvisory.operationalAssessment : undefined,
+      evidenceQuality: rawAdvisory.evidenceQuality === "high" || rawAdvisory.evidenceQuality === "medium" || rawAdvisory.evidenceQuality === "low" ? rawAdvisory.evidenceQuality : undefined,
+      citations,
+      suggestedCategory: stringValue(rawAdvisory.suggestedCategory),
+      rationale: stringValue(rawAdvisory.rationale)
+    }
+  };
 };
 
 const snapshotNameExpression = `
@@ -168,6 +231,7 @@ const fromRow = (row: CandidateRow): ReviewCandidate => ({
     ? Object.fromEntries(row.approved_field_paths.map((field) => [field, row.proposed_values[field]!]))
     : undefined,
   evidence: row.evidence ?? [],
+  provenance: reviewProvenance(row.provenance),
   decisions: (row.decisions ?? []).map((decision) => ({
     revision: decision.revision,
     action: decision.action,
@@ -189,6 +253,7 @@ const candidateSelect = `
     revision.before_values,
     state.approved_field_paths,
     coalesce(revision.provenance->'evidence', '[]'::jsonb) as evidence,
+    revision.provenance,
     coalesce((
       select jsonb_agg(jsonb_build_object(
         'revision', decision_state.revision,
@@ -223,11 +288,29 @@ export class NeonReviewRepository {
 
   async get(candidateId: string): Promise<ReviewCandidate | undefined> {
     const rows = await this.#query<CandidateRow>(`${candidateSelect} where state.candidate_id = $1::uuid`, [candidateId]);
-    return rows[0] && fromRow(rows[0]);
+    const row = rows[0];
+    if (!row) return undefined;
+    return { ...fromRow(row), decisions: await this.#decisionHistory(candidateId) };
   }
 
-  async list(limit = 50): Promise<ReviewCandidate[]> {
-    const rows = await this.#query<CandidateRow>(`${candidateSelect} order by state.updated_at desc limit $1`, [Math.max(1, Math.min(limit, 100))]);
+  async list(input: number | ReviewQueueFilters = 50): Promise<ReviewCandidate[]> {
+    const filters = typeof input === "number" ? { limit: input } : input;
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (filters.status) {
+      where.push(`state.status = $${params.length + 1}`);
+      params.push(filters.status === "approved" ? "approved_for_future_export" : filters.status);
+    }
+    if (filters.kind) {
+      where.push(`revision.kind = $${params.length + 1}`);
+      params.push(filters.kind);
+    }
+    if (filters.evidenceQuality) {
+      where.push(`revision.provenance->'advisory'->>'evidenceQuality' = $${params.length + 1}`);
+      params.push(filters.evidenceQuality);
+    }
+    params.push(Math.max(1, Math.min(filters.limit ?? 50, 100)));
+    const rows = await this.#query<CandidateRow>(`${candidateSelect}${where.length ? ` where ${where.join(" and ")}` : ""} order by case state.status when 'staged' then 0 when 'deferred' then 1 else 2 end, case revision.kind when 'closure_review' then 0 else 1 end, state.updated_at desc limit $${params.length}`, params);
     return rows.map(fromRow);
   }
 
@@ -257,6 +340,19 @@ export class NeonReviewRepository {
       limit $1
     `, [Math.max(1, Math.min(limit, 100))]);
     return rows.map((row) => ({ id: row.id, name: row.name }));
+  }
+
+  async calibrationSummary(): Promise<CalibrationSummary[]> {
+    const rows = await this.#query<{ promptVersion: string | null; cboEligibility: AiAdvisory["cboEligibility"] | null; decision: "approved" | "rejected" | "deferred" }>(`
+      select revision.provenance->'advisory'->>'promptVersion' as "promptVersion",
+        revision.provenance->'advisory'->>'cboEligibility' as "cboEligibility",
+        case state.status when 'approved_for_future_export' then 'approved' else state.status end as decision
+      from review_workspace.candidate_current_state state
+      join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
+      where state.status in ('approved_for_future_export', 'rejected', 'deferred')
+        and revision.provenance ? 'advisory'
+    `);
+    return summarizeCalibration(rows.flatMap((row) => row.promptVersion ? [{ promptVersion: row.promptVersion, cboEligibility: row.cboEligibility ?? undefined, decision: row.decision }] : []));
   }
 
   async assertBaselineReady(): Promise<void> {
@@ -440,6 +536,39 @@ export class NeonReviewRepository {
     const sql = this.#sql();
     await assertReviewWorkspace(sql);
     return await sql.query(query, params) as T[];
+  }
+
+  async #decisionHistory(candidateId: string): Promise<ReviewDecisionRecord[]> {
+    const rows = await this.#query<Omit<ReviewDecisionRecord, "revision"> & { revision: number }>(`
+      with recursive lineage as (
+        select state.candidate_revision_id as id, 0 as depth
+        from review_workspace.candidate_current_state state
+        where state.candidate_id = $1::uuid
+        union all
+        select revision.supersedes_candidate_revision_id, lineage.depth + 1
+        from review_workspace.candidate_revisions revision
+        join lineage on lineage.id = revision.id
+        where revision.supersedes_candidate_revision_id is not null
+      ), history as (
+        select decision.decision::text as action, decision.reviewer_subject as "reviewerSubject",
+          coalesce(decision.rationale, '') as reason, decision.approved_field_paths as fields,
+          decision.decided_at as at
+        from review_workspace.review_decisions decision
+        join lineage on lineage.id = decision.candidate_revision_id
+        union all
+        select 'superseded'::text as action,
+          revision.provenance->'reviewerEdit'->>'subject' as "reviewerSubject",
+          coalesce(revision.provenance->'reviewerEdit'->>'reason', '') as reason,
+          '[]'::jsonb as fields, revision.created_at as at
+        from review_workspace.candidate_revisions revision
+        join lineage on lineage.id = revision.id
+        where jsonb_typeof(revision.provenance->'reviewerEdit') = 'object'
+      )
+      select row_number() over (order by at)::integer as revision, action, "reviewerSubject", reason, fields, at
+      from history
+      order by at
+    `, [candidateId]);
+    return rows.map((decision) => ({ ...decision, fields: decision.fields?.length ? decision.fields : undefined }));
   }
 }
 

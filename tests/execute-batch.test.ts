@@ -51,3 +51,12 @@ test("cron rejects bad authorization before baseline or provider work", async ()
   });
   assert.equal(response.status, 401);
 });
+
+test("production schedule remains one secured checkpoint per cron invocation", () => {
+  const config = readFileSync(new URL("../vercel.json", import.meta.url), "utf8");
+  const runbook = readFileSync(new URL("../docs/ops/operator-runbook.md", import.meta.url), "utf8");
+  assert.match(config, /"path": "\/api\/cron"/);
+  assert.match(config, /"schedule": "\*\/5 \* \* \* \*"/);
+  assert.match(runbook, /one-resource manual canary/);
+  assert.match(runbook, /20%/);
+});

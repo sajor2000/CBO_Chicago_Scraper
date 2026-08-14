@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { requireWorkspaceRole, WorkspaceAuthorizationError, WorkspaceTargetError } from "../../../lib/db.ts";
 import { runRegistry } from "../../../lib/runs/index.ts";
 import { reviewRepository } from "../../../lib/repositories/review.ts";
+import { assertHostedVerificationConfigured } from "../../../lib/verification/readiness.ts";
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -10,6 +11,7 @@ export async function POST(request: Request): Promise<Response> {
     await requireWorkspaceRole(userId, "operator");
     const body = await request.json() as { idempotencyKey: string; selection: string[]; budget: number };
     await reviewRepository.assertBaselineReady();
+    assertHostedVerificationConfigured();
     return Response.json(await runRegistry.launch(body), { status: 202 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Run launch failed." }, { status: error instanceof WorkspaceAuthorizationError ? 403 : error instanceof WorkspaceTargetError ? 503 : 400 });

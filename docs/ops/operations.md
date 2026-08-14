@@ -17,7 +17,7 @@ Follow [source-policy.md](../policy/source-policy.md): official sites are primar
 
 ## Cost and monitoring
 
-Before enabling hosted providers, set provider-specific spend caps and request limits in the deployment environment. Start with an explicitly bounded manual selection and run `POST /api/runs/{runId}/execute` once per checkpoint; its lease prevents duplicate completion. Record each run's selected resources, duration, provider limit/failure events, estimated cost, candidate decisions, blocked-source rate, and export result in the non-production review database. Alert the service owner on budget exhaustion, repeated provider failures, or a source-policy violation.
+Before enabling hosted providers, set provider-specific spend caps and request limits in the deployment environment. Start with an explicitly bounded manual selection and run `POST /api/runs/{runId}/execute` once per checkpoint; its lease prevents duplicate completion. Record each run's selected resources, duration, provider limit/failure events, estimated cost, candidate decisions, blocked-source rate, and export result in the non-production review database. Alert the service owner on budget exhaustion, repeated provider failures, or a source-policy violation. During the first 10-checkpoint canary, stop on any provider failure, more than 20% blocked/timeout/rate-limited checkpoints, unexpected candidate volume, or a reviewer finding that advisory rationale lacks captured-evidence support.
 
 ## Incident, rollback, and emergency stop
 

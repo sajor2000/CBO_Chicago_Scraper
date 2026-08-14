@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { authorizeCron } from "../src/lib/runs/cron.ts";
 import { InMemoryRunRegistry, RunLockError, scheduledCohortKey } from "../src/lib/runs/index.ts";
@@ -50,4 +51,11 @@ test("releasing a lease lets the same checkpoint be claimed again", () => {
 test("scheduled cohorts are idempotent within one UTC month", () => {
   assert.equal(scheduledCohortKey(new Date("2026-08-13T00:00:00Z")), "scheduled:2026-08");
   assert.notEqual(scheduledCohortKey(new Date("2026-09-01T00:00:00Z")), "scheduled:2026-08");
+});
+
+test("run history is bounded and ordered by most recent start", () => {
+  const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
+  assert.match(registry, /async listRecent\(limit = 10\)/);
+  assert.match(registry, /order by run\.started_at desc limit \$1/);
+  assert.match(registry, /Math\.min\(limit, 25\)/);
 });

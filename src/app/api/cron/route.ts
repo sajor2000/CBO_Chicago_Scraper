@@ -2,6 +2,7 @@ import { reviewRepository } from "../../../lib/repositories/review.ts";
 import { authorizeCron, CronAuthorizationError } from "../../../lib/runs/cron.ts";
 import { executeCheckpoint, type CheckpointResult } from "../../../lib/runs/execute-checkpoint.ts";
 import { runRegistry, RunLockError } from "../../../lib/runs/index.ts";
+import { assertHostedVerificationConfigured } from "../../../lib/verification/readiness.ts";
 
 /** One hosted evidence checkpoint can take multiple provider round-trips. */
 export const maxDuration = 60;
@@ -15,7 +16,10 @@ type CronDependencies = {
 
 const productionDependencies: CronDependencies = {
   authorize: authorizeCron,
-  assertBaselineReady: () => reviewRepository.assertBaselineReady(),
+  assertBaselineReady: async () => {
+    await reviewRepository.assertBaselineReady();
+    assertHostedVerificationConfigured();
+  },
   launchScheduled: () => runRegistry.launchScheduled(),
   executeCheckpoint
 };

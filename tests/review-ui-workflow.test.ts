@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { InMemoryReviewRepository, RevisionConflictError } from "../src/lib/repositories/review.ts";
+import { InMemoryReviewRepository, RevisionConflictError, reviewProvenance } from "../src/lib/repositories/review.ts";
 import { readFileSync } from "node:fs";
 
 test("approval stores a field subset and stale decisions fail compare-and-swap", () => {
@@ -43,4 +43,36 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   assert.match(page, /listSeededResources/);
   assert.match(page, /resourceName/);
   assert.match(page, /ChicagoHealthMap/);
+  assert.match(page, /verificationReadiness/);
+  assert.match(page, /readiness-list/);
+  assert.match(page, /RunStatus/);
+  const status = readFileSync(new URL("../src/app/review/run-status.tsx", import.meta.url), "utf8");
+  assert.match(status, /Recent verification runs/);
+  assert.match(status, /providerFailures/);
+  assert.match(page, /CalibrationSummary/);
+});
+
+test("review provenance exposes only redacted, structured advisory evidence", () => {
+  const provenance = reviewProvenance({ observations: [{ provider: "official", state: "found", observedAt: "2026-08-13T00:00:00Z", excerpt: "api_key=secret", values: { phone: "555-1212", ignored: 3 } }], advisory: { cboEligibility: "likely_cbo", citations: ["official"] } });
+  assert.equal(provenance.observations[0]?.excerpt, "api_key=[redacted]");
+  assert.deepEqual(provenance.observations[0]?.values, { phone: "555-1212" });
+  assert.equal(provenance.advisory?.cboEligibility, "likely_cbo");
+  assert.deepEqual(provenance.advisory?.citations, ["official"]);
+  const detail = readFileSync(new URL("../src/app/review/[candidateId]/page.tsx", import.meta.url), "utf8");
+  assert.match(detail, /ReviewProvenanceCard/);
+});
+
+test("review queue accepts bounded filters and detail includes human decision history", () => {
+  const reviews = new InMemoryReviewRepository();
+  reviews.stage({ id: "c3", proposedValues: { address: "2 New St" }, provenance: { observations: [], advisory: { evidenceQuality: "high" } } });
+  reviews.stage({ id: "c4", proposedValues: { address: "3 New St" }, provenance: { observations: [], advisory: { evidenceQuality: "low" } } });
+  assert.deepEqual(reviews.list({ evidenceQuality: "high" }).map((candidate) => candidate.id), ["c3"]);
+  const api = readFileSync(new URL("../src/app/api/review/route.ts", import.meta.url), "utf8");
+  assert.match(api, /evidenceQuality/);
+  const detail = readFileSync(new URL("../src/app/review/[candidateId]/page.tsx", import.meta.url), "utf8");
+  assert.match(detail, /ReviewHistory/);
+  const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
+  assert.match(repository, /with recursive lineage/);
+  assert.match(repository, /'superseded'::text/);
+  assert.match(repository, /provenance->'reviewerEdit'/);
 });
