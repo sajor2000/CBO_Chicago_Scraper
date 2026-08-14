@@ -31,14 +31,14 @@ The default service-location boundary is the seven-county Chicagoland/CMAP regio
 
 The app needs a polished, simple interface for a small ChicagoHealthMap team—not an engineering console. It must let an operator manually start a bounded agentic crawling run, follow its progress and failure states, and hand reviewers a clear queue of evidence-backed field diffs. Reviewers should be able to understand the resource, sources, confidence, and proposed change on one screen before approving, rejecting, or deferring individual fields.
 
-After the manual pilot is accepted, the same durable workflow will run automatically **once every two months** through a Vercel cron job. Cron must enqueue the same checkpointed work as the manual trigger, prevent overlapping runs, obey provider budgets, and never bypass human review.
+After the manual canary is accepted, the same durable workflow runs through the secured Vercel Cron endpoint. The current production schedule invokes one checkpoint every five minutes for the monthly cohort; it prevents overlapping work, obeys provider budgets, and never bypasses human review.
 
 ## Tech stack
 
 | Layer | Choice | Responsibility |
 | --- | --- | --- |
 | Web app | Next.js 16 + React 19 + TypeScript | Reviewer queue, operator controls, server routes |
-| Hosting | Vercel | Preview/production deployment, manual trigger, and guarded every-two-month cron entry point |
+| Hosting | Vercel | Preview/production deployment, manual trigger, and guarded five-minute Cron entry point |
 | Authentication | Clerk | Small-team sign-in; server-side reviewer/operator authorization |
 | Review database | Neon PostgreSQL + PostGIS | CBO/WIC copies and the `review_workspace` audit workflow |
 | Evidence storage | Vercel Blob | Private raw evidence artifacts when configured |
@@ -56,7 +56,7 @@ After the manual pilot is accepted, the same durable workflow will run automatic
 - Official sites are primary operational evidence; Google Places corroborates. Search is discovery-only.
 - Azure OpenAI is advisory. It cannot create a category, merge organizations, set closure, or write a directory field.
 - Blocked, rate-limited, timed-out, absent, or contradictory sources are `unable_to_verify`/conflict outcomes.
-- Cron is intentionally disabled in [vercel.json](vercel.json) until a manual pilot is accepted.
+- Cron is production-only and secured by `CRON_SECRET`; previews do not run it. Start relying on it only after the documented manual canary passes.
 
 ## Repository map
 
@@ -103,7 +103,7 @@ npm run build   # Production Next.js build
 3. Grant Clerk `reviewer` and `operator` roles in `review_workspace.reviewer_access`.
 4. Configure provider secrets in Vercel and run a one-record manual pilot from `/review`.
 5. Review the evidence and candidate UX before widening the batch.
-6. Keep cron disabled until the manual pilot, reviewer workflow, and cost guardrails are accepted; then enable the guarded every-two-month Vercel schedule.
+6. Run the one-resource manual canary, then the documented 10-checkpoint canary. Stop on the runbook thresholds before relying on the guarded production Cron schedule.
 7. Build/test the manual Azure patch handoff only after the Azure schema/key/version contract and a non-production target are available.
 
 ## Cursor handoff

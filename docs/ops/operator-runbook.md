@@ -4,6 +4,12 @@ Clerk controls access through a signed-in account whose subject has an active `o
 
 Vercel production invokes `GET /api/cron` every five minutes. It requires `CRON_SECRET`: Vercel sends it as a bearer token and the endpoint rejects missing or invalid authorization. Each invocation starts or resumes the current UTC-month cohort and processes one durably leased record, so invocations cannot overlap work. This schedule needs a Vercel Pro or Enterprise project; Vercel does not activate cron for preview deployments. It performs real public-provider requests and writes review candidates only—never a production directory publish or automatic closure. The review app uses the dedicated Neon review workspace only; its startup connection must find `review_workspace.workspace_sentinel` with `workspace_kind = dedicated_review_workspace` before hosted use.
 
+## Production canary and recovery
+
+Before relying on the scheduled cohort, confirm the `/review` readiness checks are green, then run a **one-resource manual canary**. An operator watches its run status and a reviewer checks the resulting candidate or unable-to-verify outcome. Stop scheduled work, cancel the active run, and investigate before continuing when any of these occur: a provider failure, blocked/timeout/rate-limit result for more than 20% of the first 10 checkpoints, an unexpected candidate volume, an advisory citation that the reviewer cannot match to captured evidence, or a reviewer disagreement on more than 25% of comparable canary decisions.
+
+Resume only after the owner documents the cause and validates the fix with another one-resource canary. A cancelled or failed checkpoint is recoverable through the operator controls; never delete an audit record or edit a directory record to clear the queue. Escalate provider outages, workspace/readiness failures, or any suspected policy violation to the service owner.
+
 ## Seed the current CBO directory
 
 Before selecting an import source, run `npm run profile:cbo-source` in the authorized source environment with `SOURCE_DATABASE_URL`, `CBO_SOURCE_TABLE`, and `CBO_SOURCE_ID_COLUMN`. It emits only the schema-qualified relation, column metadata, and aggregate ID/count checks; it never prints a connection string or CBO row. It accepts a base relation or the reviewed `public.cbo_public_directory_v1` view, but does not create or modify either one. Stop if the ID has nulls or duplicates, or if the profile does not match the intended public-directory relation.
