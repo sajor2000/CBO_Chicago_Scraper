@@ -73,4 +73,6 @@ test("review queue accepts bounded filters and detail includes human decision hi
   assert.match(detail, /ReviewHistory/);
   const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
   assert.match(repository, /with recursive lineage/);
+  assert.match(repository, /'superseded'::text/);
+  assert.match(repository, /provenance->'reviewerEdit'/);
 });

@@ -549,14 +549,24 @@ export class NeonReviewRepository {
         from review_workspace.candidate_revisions revision
         join lineage on lineage.id = revision.id
         where revision.supersedes_candidate_revision_id is not null
+      ), history as (
+        select decision.decision::text as action, decision.reviewer_subject as "reviewerSubject",
+          coalesce(decision.rationale, '') as reason, decision.approved_field_paths as fields,
+          decision.decided_at as at
+        from review_workspace.review_decisions decision
+        join lineage on lineage.id = decision.candidate_revision_id
+        union all
+        select 'superseded'::text as action,
+          revision.provenance->'reviewerEdit'->>'subject' as "reviewerSubject",
+          coalesce(revision.provenance->'reviewerEdit'->>'reason', '') as reason,
+          '[]'::jsonb as fields, revision.created_at as at
+        from review_workspace.candidate_revisions revision
+        join lineage on lineage.id = revision.id
+        where jsonb_typeof(revision.provenance->'reviewerEdit') = 'object'
       )
-      select row_number() over (order by decision.decided_at)::integer as revision,
-        decision.decision as action, decision.reviewer_subject as "reviewerSubject",
-        coalesce(decision.rationale, '') as reason, decision.approved_field_paths as fields,
-        decision.decided_at as at
-      from review_workspace.review_decisions decision
-      join lineage on lineage.id = decision.candidate_revision_id
-      order by decision.decided_at
+      select row_number() over (order by at)::integer as revision, action, "reviewerSubject", reason, fields, at
+      from history
+      order by at
     `, [candidateId]);
     return rows.map((decision) => ({ ...decision, fields: decision.fields?.length ? decision.fields : undefined }));
   }
