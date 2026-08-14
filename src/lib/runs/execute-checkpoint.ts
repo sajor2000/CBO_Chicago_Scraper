@@ -1,5 +1,6 @@
 import { hostedEvidenceFromEnv } from "../providers/hosted-evidence.ts";
 import { reviewRepository } from "../repositories/review.ts";
+import type { CapturedObservation } from "../retrieval/types.ts";
 import { processVerificationCheckpoint, referenceResourceFromSnapshot } from "../verification/run-checkpoint.ts";
 import { runRegistry, type RunReport } from "./index.ts";
 
@@ -22,6 +23,19 @@ const within = <T,>(work: Promise<T>, milliseconds: number, label: string): Prom
   work.then(resolve, reject).finally(() => clearTimeout(timeout));
 });
 
+export function providerIssuesFor(observations: CapturedObservation[], advisoryError?: unknown): string[] {
+  const issues = observations
+    .filter((observation) => observation.state !== "success" && observation.state !== "no_result")
+    .map((observation) => `${observation.provider}:${observation.state}`);
+  if (!advisoryError) return issues;
+  const message = advisoryError instanceof Error ? advisoryError.message : "";
+  const httpStatus = message.match(/request failed \((\d{3})\)/)?.[1];
+  const state = /timed out/i.test(message) ? "timeout"
+    : httpStatus ? `http_${httpStatus}`
+      : /response|structured|invalid|JSON/i.test(message) ? "malformed" : "unavailable";
+  return [...issues, `azure_openai:${state}`];
+}
+
 /** Executes one leased checkpoint; callers own authorization and HTTP response mapping. */
 export async function executeCheckpoint(runId: string): Promise<CheckpointResult> {
   let leaseToken: string | undefined;
@@ -40,11 +54,12 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     if (!seeded) throw new Error("Selected resource has no seeded public snapshot.");
     const resource = referenceResourceFromSnapshot(seeded);
     const observations = await within(hostedEvidence.collect(resource), 30_000, "Evidence collection");
-    const advisory = await within(hostedEvidence.score(resource, observations), 25_000, "Evidence scoring").catch(() => undefined);
-    const providerIssues = observations
-      .filter((observation) => observation.state !== "success" && observation.state !== "no_result")
-      .map((observation) => `${observation.provider}:${observation.state}`);
-    if (!advisory) providerIssues.push("azure_openai:unavailable");
+    let advisoryError: unknown;
+    const advisory = await within(hostedEvidence.score(resource, observations), 25_000, "Evidence scoring").catch((error) => {
+      advisoryError = error;
+      return undefined;
+    });
+    const providerIssues = providerIssuesFor(observations, advisoryError);
     if (providerIssues.length) console.warn("Verification provider issues", { runId, resourceId: claim.resourceId, providerIssues });
     const output = await processVerificationCheckpoint({
       resource,
