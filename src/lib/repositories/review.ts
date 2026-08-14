@@ -34,6 +34,7 @@ export interface ReviewCandidate {
 }
 
 export type SeededResourceSummary = { id: string; name: string };
+export type ReviewQueueFilters = { limit?: number; status?: CandidateStatus; kind?: NonNullable<ReviewCandidate["kind"]>; evidenceQuality?: NonNullable<ReviewProvenance["advisory"]>["evidenceQuality"] };
 
 export interface ReviewDecisionRecord {
   revision: number;
@@ -81,11 +82,15 @@ export class InMemoryReviewRepository {
     return candidate && clone(candidate);
   }
 
-  list(limit = 50): ReviewCandidate[] {
+  list(input: number | ReviewQueueFilters = 50): ReviewCandidate[] {
+    const filters = typeof input === "number" ? { limit: input } : input;
     const candidates: ReviewCandidate[] = [];
     for (const candidate of this.#candidates.values()) {
+      if (filters.status && candidate.status !== filters.status) continue;
+      if (filters.kind && candidate.kind !== filters.kind) continue;
+      if (filters.evidenceQuality && candidate.provenance.advisory?.evidenceQuality !== filters.evidenceQuality) continue;
       candidates.push(clone(candidate));
-      if (candidates.length >= Math.max(1, Math.min(limit, 100))) break;
+      if (candidates.length >= Math.max(1, Math.min(filters.limit ?? 50, 100))) break;
     }
     return candidates;
   }
@@ -282,11 +287,29 @@ export class NeonReviewRepository {
 
   async get(candidateId: string): Promise<ReviewCandidate | undefined> {
     const rows = await this.#query<CandidateRow>(`${candidateSelect} where state.candidate_id = $1::uuid`, [candidateId]);
-    return rows[0] && fromRow(rows[0]);
+    const row = rows[0];
+    if (!row) return undefined;
+    return { ...fromRow(row), decisions: await this.#decisionHistory(candidateId) };
   }
 
-  async list(limit = 50): Promise<ReviewCandidate[]> {
-    const rows = await this.#query<CandidateRow>(`${candidateSelect} order by state.updated_at desc limit $1`, [Math.max(1, Math.min(limit, 100))]);
+  async list(input: number | ReviewQueueFilters = 50): Promise<ReviewCandidate[]> {
+    const filters = typeof input === "number" ? { limit: input } : input;
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (filters.status) {
+      where.push(`state.status = $${params.length + 1}`);
+      params.push(filters.status === "approved" ? "approved_for_future_export" : filters.status);
+    }
+    if (filters.kind) {
+      where.push(`revision.kind = $${params.length + 1}`);
+      params.push(filters.kind);
+    }
+    if (filters.evidenceQuality) {
+      where.push(`revision.provenance->'advisory'->>'evidenceQuality' = $${params.length + 1}`);
+      params.push(filters.evidenceQuality);
+    }
+    params.push(Math.max(1, Math.min(filters.limit ?? 50, 100)));
+    const rows = await this.#query<CandidateRow>(`${candidateSelect}${where.length ? ` where ${where.join(" and ")}` : ""} order by case state.status when 'staged' then 0 when 'deferred' then 1 else 2 end, case revision.kind when 'closure_review' then 0 else 1 end, state.updated_at desc limit $${params.length}`, params);
     return rows.map(fromRow);
   }
 
@@ -499,6 +522,29 @@ export class NeonReviewRepository {
     const sql = this.#sql();
     await assertReviewWorkspace(sql);
     return await sql.query(query, params) as T[];
+  }
+
+  async #decisionHistory(candidateId: string): Promise<ReviewDecisionRecord[]> {
+    const rows = await this.#query<Omit<ReviewDecisionRecord, "revision"> & { revision: number }>(`
+      with recursive lineage as (
+        select state.candidate_revision_id as id, 0 as depth
+        from review_workspace.candidate_current_state state
+        where state.candidate_id = $1::uuid
+        union all
+        select revision.supersedes_candidate_revision_id, lineage.depth + 1
+        from review_workspace.candidate_revisions revision
+        join lineage on lineage.id = revision.id
+        where revision.supersedes_candidate_revision_id is not null
+      )
+      select row_number() over (order by decision.decided_at)::integer as revision,
+        decision.decision as action, decision.reviewer_subject as "reviewerSubject",
+        coalesce(decision.rationale, '') as reason, decision.approved_field_paths as fields,
+        decision.decided_at as at
+      from review_workspace.review_decisions decision
+      join lineage on lineage.id = decision.candidate_revision_id
+      order by decision.decided_at
+    `, [candidateId]);
+    return rows.map((decision) => ({ ...decision, fields: decision.fields?.length ? decision.fields : undefined }));
   }
 }
 

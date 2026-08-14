@@ -177,6 +177,16 @@ a:hover { color: #085853; }
   gap: var(--space-3);
 }
 
+.queue-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.queue-filters label { display: grid; gap: var(--space-1); font-weight: 600; }
+
 .candidate-row {
   padding: var(--space-4);
   border: 1px solid var(--line);

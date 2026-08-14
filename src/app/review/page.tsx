@@ -31,7 +31,7 @@ function AuthGate({ title, body, href, linkLabel }: { title: string; body: strin
   </main>;
 }
 
-export default async function ReviewQueuePage() {
+export default async function ReviewQueuePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { userId } = await auth();
   if (!userId) {
     return <AuthGate title="Sign in required" body="Open the review workspace with a ChicagoHealthMap Clerk account." href="/sign-in" linkLabel="Go to sign in" />;
@@ -58,7 +58,9 @@ export default async function ReviewQueuePage() {
     />;
   }
 
-  const candidates = isReviewer ? await reviewRepository.list() : [];
+  const filters = await searchParams;
+  const text = (key: string) => typeof filters[key] === "string" ? filters[key] : undefined;
+  const candidates = isReviewer ? await reviewRepository.list({ status: text("status") as "staged" | "deferred" | "rejected" | "approved" | undefined, kind: text("kind") as "update" | "closure_review" | "new_resource" | undefined, evidenceQuality: text("evidenceQuality") as "high" | "medium" | "low" | undefined }) : [];
   let resources: Array<{ id: string; name: string }> = [];
   let runs: Awaited<ReturnType<typeof runRegistry.listRecent>> = [];
   let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
@@ -96,6 +98,12 @@ export default async function ReviewQueuePage() {
     {isReviewer ? (
       <section className="queue-panel" aria-labelledby="queue-title">
         <h2 id="queue-title">Staged candidates</h2>
+        <form className="queue-filters" action="/review">
+          <label>Status <select name="status" defaultValue={text("status") ?? ""}><option value="">All</option><option value="staged">Staged</option><option value="deferred">Deferred</option><option value="rejected">Rejected</option><option value="approved">Approved</option></select></label>
+          <label>Kind <select name="kind" defaultValue={text("kind") ?? ""}><option value="">All</option><option value="update">Update</option><option value="closure_review">Closure review</option><option value="new_resource">New resource</option></select></label>
+          <label>Evidence quality <select name="evidenceQuality" defaultValue={text("evidenceQuality") ?? ""}><option value="">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+          <button type="submit">Filter</button>
+        </form>
         {candidates.length ? (
           <ul className="candidate-list">
             {candidates.map((candidate) => {

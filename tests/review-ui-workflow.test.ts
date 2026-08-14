@@ -60,3 +60,16 @@ test("review provenance exposes only redacted, structured advisory evidence", ()
   const detail = readFileSync(new URL("../src/app/review/[candidateId]/page.tsx", import.meta.url), "utf8");
   assert.match(detail, /ReviewProvenanceCard/);
 });
+
+test("review queue accepts bounded filters and detail includes human decision history", () => {
+  const reviews = new InMemoryReviewRepository();
+  reviews.stage({ id: "c3", proposedValues: { address: "2 New St" }, provenance: { observations: [], advisory: { evidenceQuality: "high" } } });
+  reviews.stage({ id: "c4", proposedValues: { address: "3 New St" }, provenance: { observations: [], advisory: { evidenceQuality: "low" } } });
+  assert.deepEqual(reviews.list({ evidenceQuality: "high" }).map((candidate) => candidate.id), ["c3"]);
+  const api = readFileSync(new URL("../src/app/api/review/route.ts", import.meta.url), "utf8");
+  assert.match(api, /evidenceQuality/);
+  const detail = readFileSync(new URL("../src/app/review/[candidateId]/page.tsx", import.meta.url), "utf8");
+  assert.match(detail, /ReviewHistory/);
+  const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
+  assert.match(repository, /with recursive lineage/);
+});

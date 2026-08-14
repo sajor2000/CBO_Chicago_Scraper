@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { requireWorkspaceRole, WorkspaceAuthorizationError, WorkspaceTargetError } from "../../../lib/db.ts";
 import { reviewRepository } from "../../../lib/repositories/review.ts";
 import { ReviewActions } from "../review-actions.tsx";
+import { ReviewHistory } from "../review-history.tsx";
 import { ReviewProvenanceCard } from "../review-provenance.tsx";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
@@ -87,6 +88,7 @@ export default async function CandidateReviewPage({ params }: { params: Promise<
     </section>
 
     <ReviewProvenanceCard evidence={candidate.evidence} provenance={candidate.provenance} />
+    <ReviewHistory decisions={candidate.decisions} />
 
     <ReviewActions candidateId={candidate.id} expectedRevision={candidate.revision} proposedValues={candidate.proposedValues} />
   </main>;
