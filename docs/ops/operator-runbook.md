@@ -16,7 +16,7 @@ Before deploying the reviewer eligibility UI, run `npm run apply:reviewer-cbo-el
 
 ## Seed the current CBO directory
 
-Before selecting an import source, run `npm run profile:cbo-source` in the authorized source environment with `SOURCE_DATABASE_URL`, `CBO_SOURCE_TABLE`, and `CBO_SOURCE_ID_COLUMN`. It emits only the schema-qualified relation, column metadata, and aggregate ID/count checks; it never prints a connection string or CBO row. It accepts a base relation or the reviewed `public.cbo_public_directory_v1` view, but does not create or modify either one. Stop if the ID has nulls or duplicates, or if the profile does not match the intended public-directory relation.
+Before selecting an import source, run `npm run profile:cbo-source` in the authorized source environment with `SOURCE_DATABASE_URL`, `CBO_SOURCE_TABLE`, and `CBO_SOURCE_ID_COLUMN`. It emits only the schema-qualified relation, column metadata, and aggregate ID/count checks; it never prints a connection string or CBO row. Profile `public.community_resource_locations` with `id` and `public.wic_locations` with `wic_id`; stop on null/duplicate IDs or contract drift. The import itself uses `CBO_SOURCE_PROFILE=chicagohealthmap-direct-v2`, reads only those two tables, and performs no source DDL or writes.
 
 Before the first seed, run `npm run apply:baseline-import-migration` from the same controlled environment. It is additive and must complete before `npm run import:cbo-baseline`; the importer fails before row writes unless the receipt table, append-only trigger, and INSERT grant exist.
 

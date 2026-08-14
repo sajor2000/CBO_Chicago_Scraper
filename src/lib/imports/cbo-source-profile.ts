@@ -7,7 +7,9 @@ export const approvedNormalizedView = "public.cbo_public_directory_v1";
 export type ApprovedCboSourceProfile = {
   name: string;
   sourceName: string;
+  mode: "normalized_view" | "direct_tables";
   table: string;
+  tables: readonly string[];
   idColumn: string;
   fields: readonly string[];
 };
@@ -15,13 +17,26 @@ export type ApprovedCboSourceProfile = {
 const chicagoHealthMapPublicV1: ApprovedCboSourceProfile = {
   name: "chicagohealthmap-public-v1",
   sourceName: "chicagohealthmap",
+  mode: "normalized_view",
   table: approvedNormalizedView,
+  tables: [approvedNormalizedView],
   idColumn: "source_id",
   fields: ["organization_name", "location_name", "full_address", "city", "state", "zip_code", "location_type", "website", "latitude", "longitude", "description", "source_relation"]
 };
 
+const chicagoHealthMapDirectV2: ApprovedCboSourceProfile = {
+  name: "chicagohealthmap-direct-v2",
+  sourceName: "chicagohealthmap",
+  mode: "direct_tables",
+  table: "public.community_resource_locations+public.wic_locations",
+  tables: ["public.community_resource_locations", "public.wic_locations"],
+  idColumn: "source_id",
+  fields: ["organization_name", "location_name", "full_address", "city", "state", "zip_code", "location_type", "website", "phone", "latitude", "longitude", "description", "source_relation", "source_record"]
+};
+
 export function approvedCboSourceProfile(name: string): ApprovedCboSourceProfile {
   if (name === chicagoHealthMapPublicV1.name) return chicagoHealthMapPublicV1;
+  if (name === chicagoHealthMapDirectV2.name) return chicagoHealthMapDirectV2;
   throw new CboSourceProfileError("CBO source profile is not approved.");
 }
 

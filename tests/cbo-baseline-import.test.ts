@@ -110,6 +110,52 @@ test("source projection uses literal allowlisted JSON keys and maps source rows"
   assert.match(queries[2], /jsonb_build_object\('organization_name', "organization_name",/);
 });
 
+test("direct profile reads only both approved base tables and preserves public source records", async () => {
+  const queries: string[] = [];
+  const required = {
+    community_resource_locations: ["id", "organization_name", "location_type", "full_address", "hyperlink", "latitude", "longitude", "categories", "status", "capacity", "phone", "email", "hours", "languages", "description", "confidence", "sources", "last_verified", "last_enriched", "created_at", "updated_at"],
+    wic_locations: ["wic_id", "location_name", "location_type", "full_address", "city", "state", "zip_code", "county", "fips_state", "fips_county", "phone", "website", "longitude", "latitude", "source_date", "created_at", "updated_at"]
+  };
+  const query = {
+    query: async (sql: string) => {
+      queries.push(sql);
+      if (sql.includes("pg_catalog.pg_class")) return [
+        { relname: "community_resource_locations" }, { relname: "wic_locations" }
+      ];
+      if (sql.includes("information_schema.columns")) return Object.entries(required).flatMap(([table_name, columns]) =>
+        columns.map((column_name) => ({ table_name, column_name }))
+      );
+      return [
+        { source_id: "community_resource:42", payload: { organization_name: "CBO", phone: "312-555-0100", source_relation: "community_resource_locations", source_record: { id: 42 } } },
+        { source_id: "wic:7", payload: { location_name: "WIC", location_type: "wic", source_relation: "wic_locations", source_record: { wic_id: 7 } } }
+      ];
+    }
+  };
+  const rows = await readSourceRows(sourceConfigFromEnv({
+    SOURCE_DATABASE_URL: "postgres://private",
+    CBO_SOURCE_PROFILE: "chicagohealthmap-direct-v2"
+  }), query as never);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]?.payload.phone, "312-555-0100");
+  assert.deepEqual(rows[1]?.payload.source_record, { wic_id: 7 });
+  assert.match(queries[2]!, /from public\.community_resource_locations resource/);
+  assert.match(queries[2]!, /from public\.wic_locations wic/);
+  assert.doesNotMatch(queries[2]!, /to_jsonb\(/);
+  assert.match(queries[2]!, /'last_verified', resource\.last_verified/);
+  assert.match(queries[2]!, /'source_date', wic\.source_date/);
+});
+
+test("direct profile fails closed when either approved table or required column is unavailable", async () => {
+  const config = sourceConfigFromEnv({
+    SOURCE_DATABASE_URL: "postgres://private",
+    CBO_SOURCE_PROFILE: "chicagohealthmap-direct-v2"
+  });
+  await assert.rejects(readSourceRows(config, { query: async () => [{ relname: "community_resource_locations" }] } as never), /tables are unavailable/i);
+  await assert.rejects(readSourceRows(config, { query: async (sql: string) => sql.includes("pg_catalog.pg_class")
+    ? [{ relname: "community_resource_locations" }, { relname: "wic_locations" }]
+    : [] } as never), /columns are unavailable/i);
+});
+
 test("baseline refresh promotes only after both source relations are receipted", async () => {
   const { destination, queries } = fakeDestination(true);
   const report = await importCboBaseline(sourceConfig(), {
