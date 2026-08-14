@@ -1,6 +1,6 @@
 import type { AiAdvisory } from "./index.ts";
 
-export type CalibrationRecord = Pick<AiAdvisory, "promptVersion" | "cboEligibility"> & { decision: "approved" | "rejected" | "deferred" };
+export type CalibrationRecord = Pick<AiAdvisory, "promptVersion" | "cboEligibility"> & { decision: "approved" | "rejected" | "deferred"; reviewerCboEligibility?: boolean };
 export type CalibrationSummary = { promptVersion: string; reviewed: number; comparable: number; aligned: number; disagreed: number; insufficientEvidence: number; deferred: number };
 
 /** Aggregates only final human decisions; it never influences verification policy. */
@@ -12,9 +12,9 @@ export const summarizeCalibration = (records: CalibrationRecord[]): CalibrationS
     summary.reviewed += 1;
     if (record.decision === "deferred") summary.deferred += 1;
     else if (record.cboEligibility === "insufficient_evidence" || !record.cboEligibility) summary.insufficientEvidence += 1;
-    else {
+    else if (record.reviewerCboEligibility !== undefined) {
       summary.comparable += 1;
-      const aligned = (record.cboEligibility === "not_a_cbo") === (record.decision === "rejected");
+      const aligned = (record.cboEligibility !== "not_a_cbo") === record.reviewerCboEligibility;
       if (aligned) summary.aligned += 1;
       else summary.disagreed += 1;
     }

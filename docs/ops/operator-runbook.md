@@ -6,7 +6,7 @@ Vercel production invokes `GET /api/cron` every five minutes. It requires `CRON_
 
 ## Production canary and recovery
 
-Before relying on the scheduled cohort, confirm the `/review` readiness checks are green, then run a **one-resource manual canary**. An operator watches its run status and a reviewer checks the resulting candidate or unable-to-verify outcome. Stop scheduled work, cancel the active run, and investigate before continuing when any of these occur: a provider failure, blocked/timeout/rate-limit result for more than 20% of the first 10 checkpoints, an unexpected candidate volume, an advisory citation that the reviewer cannot match to captured evidence, or a reviewer disagreement on more than 25% of comparable canary decisions.
+Before relying on the scheduled cohort, confirm the `/review` readiness checks are green, then run a **one-resource manual canary**. An operator watches its run status and a reviewer checks the resulting candidate or unable-to-verify outcome. Stop scheduled work, cancel the active run, and investigate before continuing when any of these occur: a provider failure, blocked/timeout/rate-limit result for more than 20% of the first 10 checkpoints, an unexpected candidate volume, or an advisory citation/rationale that the reviewer cannot support with captured evidence.
 
 Resume only after the owner documents the cause and validates the fix with another one-resource canary. A cancelled or failed checkpoint is recoverable through the operator controls; never delete an audit record or edit a directory record to clear the queue. Escalate provider outages, workspace/readiness failures, or any suspected policy violation to the service owner.
 
