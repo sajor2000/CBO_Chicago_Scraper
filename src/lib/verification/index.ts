@@ -47,6 +47,7 @@ export interface VerificationResult {
 
 const same = (left?: string, right?: string) => Boolean(left && right && normalizeEvidenceText(left) === normalizeEvidenceText(right));
 const unavailable = new Set(["blocked", "timeout", "rate_limited"]);
+const requiredProviders = new Set(["firecrawl", "google_places"]);
 
 export const matchesIdentity = (resource: ReferenceResource, values?: EvidenceValues): boolean =>
   same(resource.name, values?.name) && (!values?.address || !resource.address || same(resource.address, values.address));
@@ -86,7 +87,7 @@ export const verifyResource = (input: {
     advisory
   };
 
-  if (observations.some((observation) => unavailable.has(observation.state))) {
+  if (observations.some((observation) => requiredProviders.has(observation.provider) && unavailable.has(observation.state))) {
     return { ...base, state: "unable_to_verify", reasons: ["A required source was blocked, timed out, or rate limited; no status delta was staged."] };
   }
 

@@ -27,6 +27,11 @@ test("blocked, timeout, and 429 sources are unable to verify without a status de
   }
 });
 
+test("optional discovery failures do not block existing-resource verification", () => {
+  const result = verifyResource({ resource, observations: [observation("firecrawl", {}), observation("google_places", {}), observation("search_fallback", {}, "timeout")] });
+  assert.equal(result.state, "no_change");
+});
+
 test("an unmatched trusted-directory lead becomes a potential new resource", () => {
   const lead = observation("local_directory", { name: "New Clinic", address: "3 Lake St" });
   const result = verifyResource({ resource, lead, observations: [] });
