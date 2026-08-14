@@ -1,17 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { CandidateStatus } from "../../lib/repositories/review.ts";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 
 export function ReviewActions({
   candidateId,
   expectedRevision,
-  proposedValues
+  proposedValues,
+  candidateKind,
+  candidateStatus
 }: {
   candidateId: string;
   expectedRevision: number;
   proposedValues: Record<string, string>;
+  candidateKind?: "update" | "closure_review" | "new_resource";
+  candidateStatus: CandidateStatus;
 }) {
   const fields = useMemo(() => Object.keys(proposedValues), [proposedValues]);
   const [selected, setSelected] = useState(fields);
@@ -21,7 +26,14 @@ export function ReviewActions({
   const [message, setMessage] = useState<string>();
   const [busy, setBusy] = useState(false);
 
-  const decide = async (action: "approved" | "rejected" | "deferred" | "edit") => {
+  if (candidateStatus !== "staged" && candidateStatus !== "deferred") {
+    return <section className="review-actions" aria-labelledby="decision-title">
+      <h2 id="decision-title">Decision</h2>
+      <p>This revision is {fieldLabel(candidateStatus)} and no longer accepts review actions.</p>
+    </section>;
+  }
+
+  const decide = async (action: "approved" | "rejected" | "deferred" | "edit" | "confirm_closed") => {
     if (!reason.trim()) return setMessage("Add a brief review reason before deciding.");
     if (action === "approved" && !selected.length) return setMessage("Select at least one field to approve.");
     if (action === "edit" && Object.values(draft).some((value) => !value.trim())) {
@@ -36,9 +48,9 @@ export function ReviewActions({
         body: JSON.stringify({
           candidateId,
           expectedRevision,
-          action,
+          action: action === "confirm_closed" ? "edit" : action,
           fields: action === "approved" ? selected : undefined,
-          proposedValues: action === "edit" ? draft : undefined,
+          proposedValues: action === "confirm_closed" ? { status: "closed" } : action === "edit" ? draft : undefined,
           reviewerCboEligibility: action === "approved" || action === "rejected" ? cboEligibility === "eligible" ? true : cboEligibility === "not_eligible" ? false : undefined : undefined,
           reason
         })
@@ -50,7 +62,7 @@ export function ReviewActions({
           : (body.error ?? "The decision could not be saved."));
         return;
       }
-      window.location.assign("/review");
+      window.location.assign(action === "confirm_closed" ? `/review/${candidateId}` : "/review");
     } catch {
       setMessage("The decision could not be saved. Check your connection and try again.");
     } finally {
@@ -90,7 +102,7 @@ export function ReviewActions({
         </fieldset>
       </>
     ) : (
-      <p className="conflict-note">No field changes were proposed. Use defer or reject after reading the evidence (for example a Google-only closure conflict).</p>
+      <p className="conflict-note">No field changes were proposed. A Google-only closure signal cannot remove a listing. If other evidence confirms closure, create a closed-status proposal for a separate approval.</p>
     )}
     <label className="reason-label">
       Reason
@@ -110,6 +122,7 @@ export function ReviewActions({
       <p>Recorded only when approving or rejecting; it does not affect field approval.</p>
     </fieldset>
     <div className="actions">
+      {candidateKind === "closure_review" && !fields.length ? <button type="button" className="primary-button" disabled={busy || !reason.trim()} onClick={() => void decide("confirm_closed")}>Propose status: closed</button> : null}
       <button type="button" className="primary-button" disabled={busy || !reason.trim() || !fields.length || selected.length === 0} onClick={() => void decide("approved")}>
         {busy ? "Saving…" : "Approve fields"}
       </button>

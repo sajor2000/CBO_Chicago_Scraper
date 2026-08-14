@@ -4,7 +4,8 @@ const label = (value: string) => value.replace(/_/g, " ");
 
 export function RunStatus({ runs }: { runs: VerificationRun[] }) {
   return <section className="queue-panel" aria-labelledby="run-status-title">
-    <h2 id="run-status-title">Recent verification runs</h2>
+    <h2 id="run-status-title">Run history</h2>
+    <p>Operational history for troubleshooting. Use Resource reports above for the outcome of each listing.</p>
     {runs.length ? <ul className="candidate-list">
       {runs.map((run) => <li key={run.id} className="candidate-row">
         <div className="candidate-main"><span>{label(run.status)}</span><span className={`status-chip status-${run.status}`}>{run.checkpoint} / {run.selection.length}</span></div>

@@ -11,7 +11,9 @@ test("execute route processes one checkpoint, sets maxDuration, and releases lea
   assert.match(route, /export const maxDuration = 60/);
   assert.match(route, /executeCheckpoint\(runId\)/);
   assert.match(worker, /claimNext\(runId\)/);
-  assert.match(worker, /completeCheckpoint\(runId, claim\.leaseToken, output\.report, output\.outcome\)/);
+  assert.match(worker, /completeCheckpoint\(runId, claim\.leaseToken, output\.report, output\.outcome, \{/);
+  assert.match(worker, /resourceName: resource\.name/);
+  assert.match(worker, /evidence: reviewProvenance/);
   assert.match(worker, /runRegistry\.status\(runId\)/);
   assert.match(worker, /releaseLease\(runId, leaseToken\)/);
   assert.doesNotMatch(route, /for \(let index = 0; index < limit/);
