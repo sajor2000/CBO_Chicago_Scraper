@@ -61,6 +61,7 @@ export function ReviewActions({
   return <section className="review-actions" aria-labelledby="decision-title">
     <h2 id="decision-title">Decision</h2>
     <p>Approve only the fields supported by the evidence. A decision cannot write to ChicagoHealthMap production.</p>
+    <ol className="decision-checklist"><li>Open the official and corroborating sources.</li><li>Confirm each selected field—not just the organization name.</li><li>Defer when the evidence is incomplete or conflicts.</li></ol>
     {fields.length ? (
       <>
         <fieldset disabled={busy}>
