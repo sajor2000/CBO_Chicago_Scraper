@@ -1,27 +1,23 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireWorkspaceRole, WorkspaceAuthorizationError, WorkspaceTargetError } from "../../../lib/db.ts";
 import { reviewRepository, RevisionConflictError, type CandidateAction, type CandidateStatus, type ReviewQueueFilters } from "../../../lib/repositories/review.ts";
+import { postReview, type ReviewPostDependencies } from "../../../lib/review/post-review.ts";
 
 const statuses: CandidateStatus[] = ["staged", "deferred", "rejected", "approved", "publish_pending", "published", "publish_failed"];
 const kinds = ["update", "closure_review", "new_resource"] as const;
 const evidenceQualities = ["high", "medium", "low"] as const;
 const oneOf = <T extends string>(value: string | null, choices: readonly T[]) => value && choices.includes(value as T) ? value as T : undefined;
 
+const productionDependencies: ReviewPostDependencies = {
+  auth,
+  requireWorkspaceRole,
+  supersede: reviewRepository.supersede.bind(reviewRepository),
+  decide: reviewRepository.decide.bind(reviewRepository),
+  errorStatus: (error) => error instanceof RevisionConflictError ? 409 : error instanceof WorkspaceAuthorizationError ? 403 : error instanceof WorkspaceTargetError ? 503 : 400
+};
+
 export async function POST(request: Request): Promise<Response> {
-  try {
-    const { userId } = await auth();
-    if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
-    await requireWorkspaceRole(userId, "reviewer");
-    const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction | "edit"; fields?: string[]; proposedValues?: Record<string, string>; reason: string; reviewerCboEligibility?: unknown };
-    if (body.reviewerCboEligibility !== undefined && typeof body.reviewerCboEligibility !== "boolean") throw new Error("CBO eligibility must be a boolean.");
-    const candidate = body.action === "edit"
-      ? await reviewRepository.supersede({ candidateId: body.candidateId, expectedRevision: body.expectedRevision, proposedValues: body.proposedValues ?? {}, actorSubject: userId, reason: body.reason })
-      : await reviewRepository.decide({ ...body, action: body.action, reviewerSubject: userId, reviewerCboEligibility: body.reviewerCboEligibility });
-    return Response.json(candidate);
-  } catch (error) {
-    const status = error instanceof RevisionConflictError ? 409 : error instanceof WorkspaceAuthorizationError ? 403 : error instanceof WorkspaceTargetError ? 503 : 400;
-    return Response.json({ error: error instanceof Error ? error.message : "Review decision failed." }, { status });
-  }
+  return postReview(request, productionDependencies);
 }
 
 export async function GET(request: Request): Promise<Response> {
