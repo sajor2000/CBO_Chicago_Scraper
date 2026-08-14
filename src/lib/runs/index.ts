@@ -534,7 +534,7 @@ export class NeonRunRegistry {
           select 1 from review_workspace.verification_runs run
           where run.id = state.run_id and run.cycle_id is not null
         ) or exists (select 1 from failed_cycle))
-      returning state.run_id
+        returning state.run_id
     `, [runId, leaseToken]);
     if (!rows[0]) throw new RunLockError();
   }
