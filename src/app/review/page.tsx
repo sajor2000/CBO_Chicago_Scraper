@@ -2,6 +2,7 @@ import { UserButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { hasWorkspaceRole, WorkspaceTargetError } from "../../lib/db.ts";
 import { reviewRepository } from "../../lib/repositories/review.ts";
+import { verificationReadiness } from "../../lib/verification/readiness.ts";
 import { RunControls } from "./run-controls.tsx";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
@@ -57,13 +58,11 @@ export default async function ReviewQueuePage() {
 
   const candidates = isReviewer ? await reviewRepository.list() : [];
   let resources: Array<{ id: string; name: string }> = [];
-  let baselineError: string | undefined;
+  let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
   if (isOperator) {
-    try {
-      await reviewRepository.assertBaselineReady();
+    readiness = await verificationReadiness();
+    if (readiness.ready) {
       resources = await reviewRepository.listSeededResources(100);
-    } catch (error) {
-      baselineError = error instanceof Error ? error.message : "Baseline is not ready for a pilot.";
     }
   }
 
@@ -79,10 +78,11 @@ export default async function ReviewQueuePage() {
     </section>
 
     {isOperator && (
-      baselineError
+      !readiness?.ready
         ? <section className="pilot-panel" aria-labelledby="pilot-title">
           <h2 id="pilot-title">Run a small evidence check</h2>
-          <p className="pilot-empty">{baselineError} Complete a reconciled baseline import before launching a pilot.</p>
+          <p className="pilot-empty">Verification is blocked until all readiness checks pass.</p>
+          <ul className="readiness-list">{readiness?.checks.filter((check) => !check.ready).map((check) => <li key={check.name}><strong>{check.name}:</strong> {check.message}</li>)}</ul>
         </section>
         : <RunControls resources={resources} />
     )}

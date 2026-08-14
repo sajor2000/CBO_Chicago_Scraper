@@ -43,4 +43,6 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   assert.match(page, /listSeededResources/);
   assert.match(page, /resourceName/);
   assert.match(page, /ChicagoHealthMap/);
+  assert.match(page, /verificationReadiness/);
+  assert.match(page, /readiness-list/);
 });
