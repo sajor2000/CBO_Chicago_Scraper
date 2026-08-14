@@ -90,6 +90,6 @@ export default async function CandidateReviewPage({ params }: { params: Promise<
     <ReviewProvenanceCard evidence={candidate.evidence} provenance={candidate.provenance} />
     <ReviewHistory decisions={candidate.decisions} />
 
-    <ReviewActions candidateId={candidate.id} expectedRevision={candidate.revision} proposedValues={candidate.proposedValues} candidateKind={candidate.kind} />
+    <ReviewActions candidateId={candidate.id} expectedRevision={candidate.revision} proposedValues={candidate.proposedValues} candidateKind={candidate.kind} candidateStatus={candidate.status} />
   </main>;
 }

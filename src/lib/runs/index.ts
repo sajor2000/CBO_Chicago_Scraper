@@ -387,10 +387,14 @@ export class NeonRunRegistry {
       ) snapshot on true
       left join lateral (
         select state.candidate_id
-        from review_workspace.candidate_revisions revision
-        join review_workspace.candidate_current_state state on state.candidate_revision_id = revision.id
-        where revision.run_id = outcome.run_id and revision.resource_id = checkpoint.resource_id
-        order by revision.created_at desc limit 1
+        from review_workspace.candidate_current_state state
+        join review_workspace.candidate_revisions current_revision on current_revision.id = state.candidate_revision_id
+        where current_revision.resource_id = checkpoint.resource_id
+          and exists (
+            select 1 from review_workspace.candidate_revisions run_revision
+            where run_revision.run_id = outcome.run_id and run_revision.resource_id = checkpoint.resource_id
+          )
+        order by state.updated_at desc limit 1
       ) candidate on true
       order by outcome.completed_at desc limit $1
     `, [Math.max(1, Math.min(limit, 100))]);

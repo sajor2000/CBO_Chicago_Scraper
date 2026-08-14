@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { CandidateStatus } from "../../lib/repositories/review.ts";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 
@@ -8,12 +9,14 @@ export function ReviewActions({
   candidateId,
   expectedRevision,
   proposedValues,
-  candidateKind
+  candidateKind,
+  candidateStatus
 }: {
   candidateId: string;
   expectedRevision: number;
   proposedValues: Record<string, string>;
   candidateKind?: "update" | "closure_review" | "new_resource";
+  candidateStatus: CandidateStatus;
 }) {
   const fields = useMemo(() => Object.keys(proposedValues), [proposedValues]);
   const [selected, setSelected] = useState(fields);
@@ -22,6 +25,13 @@ export function ReviewActions({
   const [cboEligibility, setCboEligibility] = useState<"" | "eligible" | "not_eligible">("");
   const [message, setMessage] = useState<string>();
   const [busy, setBusy] = useState(false);
+
+  if (candidateStatus !== "staged" && candidateStatus !== "deferred") {
+    return <section className="review-actions" aria-labelledby="decision-title">
+      <h2 id="decision-title">Decision</h2>
+      <p>This revision is {fieldLabel(candidateStatus)} and no longer accepts review actions.</p>
+    </section>;
+  }
 
   const decide = async (action: "approved" | "rejected" | "deferred" | "edit" | "confirm_closed") => {
     if (!reason.trim()) return setMessage("Add a brief review reason before deciding.");
