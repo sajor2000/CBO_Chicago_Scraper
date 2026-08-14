@@ -60,7 +60,7 @@ export function hostedEvidenceFromEnv() {
       directory: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT ? new TrustedDirectoryClient({ endpoint: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT }) : undefined
     }),
     score: async (resource: ReferenceResource, observations: CapturedObservation[]) => {
-      const score = await scorer.score({ name: resource.name, address: resource.address, evidence: formatAuditEvidence(observations) });
+      const score = await scorer.score({ name: resource.name, address: resource.address, evidence: formatAuditEvidence(observations), citationProviders: [...new Set(observations.map((observation) => observation.provider))] });
       return {
         promptVersion: CBO_AUDIT_PROMPT_VERSION,
         cboEligibility: score.cboEligibility,
