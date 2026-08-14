@@ -14,6 +14,7 @@ export async function POST(request: Request): Promise<Response> {
     await requireWorkspaceRole(userId, "reviewer");
     const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction | "edit"; fields?: string[]; proposedValues?: Record<string, string>; reason: string; reviewerCboEligibility?: unknown };
     if (body.reviewerCboEligibility !== undefined && typeof body.reviewerCboEligibility !== "boolean") throw new Error("CBO eligibility must be a boolean.");
+    if (body.reviewerCboEligibility !== undefined && body.action !== "approved" && body.action !== "rejected") throw new Error("CBO eligibility can only accompany approval or rejection.");
     const candidate = body.action === "edit"
       ? await reviewRepository.supersede({ candidateId: body.candidateId, expectedRevision: body.expectedRevision, proposedValues: body.proposedValues ?? {}, actorSubject: userId, reason: body.reason })
       : await reviewRepository.decide({ ...body, action: body.action, reviewerSubject: userId, reviewerCboEligibility: body.reviewerCboEligibility });

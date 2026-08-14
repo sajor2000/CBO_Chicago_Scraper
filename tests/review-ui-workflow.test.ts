@@ -19,6 +19,8 @@ test("CBO eligibility is an explicit terminal review label", () => {
   const deferred = new InMemoryReviewRepository();
   deferred.stage({ id: "defer", proposedValues: { address: "2 New St" } });
   assert.throws(() => deferred.decide({ candidateId: "defer", expectedRevision: 1, reviewerSubject: "reviewer-1", action: "deferred", reason: "Need more evidence.", reviewerCboEligibility: true }));
+  const route = readFileSync(new URL("../src/app/api/review/route.ts", import.meta.url), "utf8");
+  assert.match(route, /body\.action !== "approved" && body\.action !== "rejected"/);
 });
 
 test("a superseding edit invalidates prior approval and retains the audit history", () => {
