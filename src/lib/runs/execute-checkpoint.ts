@@ -1,5 +1,5 @@
 import { hostedEvidenceFromEnv } from "../providers/hosted-evidence.ts";
-import { reviewRepository } from "../repositories/review.ts";
+import { reviewProvenance, reviewRepository } from "../repositories/review.ts";
 import type { CapturedObservation } from "../retrieval/types.ts";
 import { processVerificationCheckpoint, referenceResourceFromSnapshot } from "../verification/run-checkpoint.ts";
 import { runRegistry, type RunReport } from "./index.ts";
@@ -12,6 +12,7 @@ export type CheckpointResult = Pick<RunReport, "recordsChecked" | "candidatesSta
   reasons?: string[];
   providerIssues?: string[];
   resourceId?: string;
+  resourceName?: string;
 };
 
 const blankStep = (): Pick<RunReport, "recordsChecked" | "candidatesStaged" | "conflicts" | "unableToVerify" | "providerFailures" | "budgetUsed"> => ({
@@ -68,7 +69,13 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
       stage: (candidate) => reviewRepository.stageVerification({ resourceId: resource.id, runId, leaseToken: claim.leaseToken, ...candidate })
     });
     if (!advisory) output.report.providerFailures = (output.report.providerFailures ?? 0) + 1;
-    await runRegistry.completeCheckpoint(runId, claim.leaseToken, output.report, output.outcome);
+    await runRegistry.completeCheckpoint(runId, claim.leaseToken, output.report, output.outcome, {
+      resourceName: resource.name,
+      verificationState: output.result.state,
+      reasons: output.result.reasons,
+      providerIssues,
+      evidence: reviewProvenance({ observations: output.result.observations, advisory: output.result.advisory })
+    });
     leaseToken = undefined;
     const runStatus = await runRegistry.status(runId);
     return {
@@ -78,7 +85,7 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
       unableToVerify: output.report.unableToVerify ?? 0,
       providerFailures: output.report.providerFailures ?? 0,
       state: output.result.state, reasons: output.result.reasons, providerIssues, resourceId: claim.resourceId,
-      done: runStatus === "completed" || runStatus === "cancelled", runStatus
+      done: runStatus === "completed" || runStatus === "cancelled", runStatus, resourceName: resource.name
     };
   } catch (error) {
     if (leaseToken) {

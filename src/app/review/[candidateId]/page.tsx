@@ -81,7 +81,7 @@ export default async function CandidateReviewPage({ params }: { params: Promise<
       ) : (
         <p className="conflict-note">
           {candidate.kind === "closure_review"
-            ? "This is a closure conflict with no proposed directory field. Review the evidence, then defer or reject. The app never auto-closes a resource."
+            ? "This is a closure conflict with no proposed directory field. Review the evidence, then defer, reject, or create a closed-status proposal for a separate approval. The app never auto-closes a resource."
             : "No field values were proposed for this candidate."}
         </p>
       )}
@@ -90,6 +90,6 @@ export default async function CandidateReviewPage({ params }: { params: Promise<
     <ReviewProvenanceCard evidence={candidate.evidence} provenance={candidate.provenance} />
     <ReviewHistory decisions={candidate.decisions} />
 
-    <ReviewActions candidateId={candidate.id} expectedRevision={candidate.revision} proposedValues={candidate.proposedValues} />
+    <ReviewActions candidateId={candidate.id} expectedRevision={candidate.revision} proposedValues={candidate.proposedValues} candidateKind={candidate.kind} />
   </main>;
 }

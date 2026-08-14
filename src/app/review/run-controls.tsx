@@ -15,6 +15,9 @@ type ExecuteResult = Totals & {
   message?: string;
   done?: boolean;
   runStatus?: string;
+  resourceName?: string;
+  state?: string;
+  reasons?: string[];
 };
 
 const blankTotals = (): Totals => ({
@@ -33,6 +36,7 @@ const activeRunStorageKey = "cbo-verification-active-run";
 export function RunControls({ resources }: { resources: Array<{ id: string; name: string }> }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState<string>();
+  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeRunId, setActiveRunId] = useState<string>();
   const cancelRequested = useRef(false);
@@ -123,7 +127,8 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
           window.location.assign("/review");
           return;
         }
-        setMessage(`Checking ${index + 1} of ${selected.length}… ${summarize(totals)}`);
+        const selectedResource = resources.find((resource) => resource.id === selected[index]);
+        setMessage(`Checking ${selectedResource?.name ?? `resource ${index + 1}`} (${index + 1} of ${selected.length})…`);
         const execution = await fetch(`/api/runs/${runId}/execute`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -151,10 +156,10 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
         if (result.done) break;
       }
 
-      setMessage(`Pilot complete: ${summarize(totals)}. Refreshing the queue…`);
+      setMessage(`Audit complete: ${summarize(totals)}. Opening the resource reports…`);
       setSelected([]);
       clearActiveRun();
-      window.location.assign("/review");
+      window.location.assign("/review#site-reports");
     } catch {
       setMessage(`The verification run could not be completed after ${summarize(totals)}. Check your connection, then refresh the queue.`);
     } finally {
@@ -171,13 +176,20 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
     </section>;
   }
 
+  const visibleResources = resources.filter((resource) => resource.name.toLowerCase().includes(query.trim().toLowerCase()));
+
   return <section className="pilot-panel" aria-labelledby="pilot-title">
     <div>
-      <h2 id="pilot-title">Run a small evidence check</h2>
-      <p>Choose up to ten copied records. Each resource is checked one at a time so a provider failure cannot strand the whole pilot.</p>
+      <p className="eyebrow">Current directory</p>
+      <h2 id="pilot-title">Choose listings to audit</h2>
+      <p>Choose up to ten copied records. Every selection receives a resource report—even when no change is proposed.</p>
     </div>
+    <label className="resource-search">Search current listings
+      <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by organization or location" />
+    </label>
+    <p className="selection-count"><strong>{selected.length}</strong> of 10 selected</p>
     <div className="pilot-resources" role="group" aria-label="Copied resources">
-      {resources.map((resource) => (
+      {visibleResources.map((resource) => (
         <label key={resource.id} className="pilot-resource">
           <input
             type="checkbox"
@@ -188,10 +200,11 @@ export function RunControls({ resources }: { resources: Array<{ id: string; name
           <span>{resource.name}</span>
         </label>
       ))}
+      {!visibleResources.length ? <p className="pilot-empty">No current listing matches that search.</p> : null}
     </div>
     <div className="actions">
       <button type="button" className="primary-button" onClick={() => void start()} disabled={!selected.length || busy} aria-busy={busy}>
-        {busy ? "Checking…" : activeRunId ? `Resume selected (${selected.length})` : `Verify selected (${selected.length})`}
+        {busy ? "Auditing…" : activeRunId ? `Resume audit (${selected.length})` : `Audit selected (${selected.length})`}
       </button>
       {busy && activeRunId ? (
         <button type="button" className="reject-button" onClick={() => void cancelActiveRun(activeRunId)}>

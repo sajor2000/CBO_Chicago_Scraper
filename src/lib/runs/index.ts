@@ -24,6 +24,24 @@ export interface RunReport {
   budgetUsed: number;
 }
 
+export interface SiteVerificationReport {
+  runId: string;
+  resourceId: string;
+  resourceName: string;
+  outcome: CheckpointOutcome;
+  verificationState?: string;
+  completedAt: string;
+  reasons: string[];
+  providerIssues: string[];
+  candidateId?: string;
+  evidence: {
+    observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: Record<string, string> }>;
+    advisory?: { cboEligibility?: string; operationalAssessment?: string; evidenceQuality?: string; suggestedCategory?: string; rationale?: string };
+  };
+}
+
+export type SiteReportPayload = Omit<SiteVerificationReport, "runId" | "resourceId" | "outcome" | "completedAt" | "candidateId">;
+
 export class RunLockError extends Error {
   constructor() {
     super("A checkpoint is already claimed.");
@@ -346,6 +364,50 @@ export class NeonRunRegistry {
     return rows.map(fromRow);
   }
 
+  async listRecentSiteReports(limit = 50): Promise<SiteVerificationReport[]> {
+    const rows = await this.#query<{
+      run_id: string;
+      resource_id: string;
+      resource_name: string;
+      outcome: CheckpointOutcome;
+      completed_at: string;
+      site_report: SiteReportPayload | null;
+      candidate_id: string | null;
+    }>(`
+      select outcome.run_id, checkpoint.resource_id,
+        coalesce(nullif(snapshot.source_payload->>'organization_name', ''), nullif(snapshot.source_payload->>'location_name', ''), nullif(snapshot.source_payload->>'name', ''), resource.reference_source_id) as resource_name,
+        outcome.outcome, outcome.completed_at, outcome.report_delta->'siteReport' as site_report,
+        candidate.candidate_id
+      from review_workspace.run_checkpoint_outcomes outcome
+      join review_workspace.run_checkpoints checkpoint on checkpoint.run_id = outcome.run_id and checkpoint.ordinal = outcome.ordinal
+      join review_workspace.resources resource on resource.id = checkpoint.resource_id
+      left join lateral (
+        select source_payload from review_workspace.resource_snapshots
+        where resource_id = checkpoint.resource_id order by imported_at desc limit 1
+      ) snapshot on true
+      left join lateral (
+        select state.candidate_id
+        from review_workspace.candidate_revisions revision
+        join review_workspace.candidate_current_state state on state.candidate_revision_id = revision.id
+        where revision.run_id = outcome.run_id and revision.resource_id = checkpoint.resource_id
+        order by revision.created_at desc limit 1
+      ) candidate on true
+      order by outcome.completed_at desc limit $1
+    `, [Math.max(1, Math.min(limit, 100))]);
+    return rows.map((row) => ({
+      runId: row.run_id,
+      resourceId: row.resource_id,
+      resourceName: row.site_report?.resourceName ?? row.resource_name,
+      outcome: row.outcome,
+      verificationState: row.site_report?.verificationState,
+      completedAt: row.completed_at,
+      reasons: row.site_report?.reasons ?? ["This run predates detailed per-resource reports."],
+      providerIssues: row.site_report?.providerIssues ?? [],
+      candidateId: row.candidate_id ?? undefined,
+      evidence: row.site_report?.evidence ?? { observations: [] }
+    }));
+  }
+
   async status(runId: string): Promise<RunStatus | undefined> {
     const rows = await this.#query<{ status: RunStatus }>(
       "select status from review_workspace.run_current_state where run_id = $1::uuid",
@@ -403,8 +465,8 @@ export class NeonRunRegistry {
     return { resourceId: rows[0].resource_id, snapshotId: rows[0].resource_snapshot_id ?? undefined, checkpoint: Number(rows[0].ordinal), leaseToken: rows[0].lease_token };
   }
 
-  async completeCheckpoint(runId: string, leaseToken: string, report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">>, outcome: CheckpointOutcome): Promise<void> {
-    const delta = dbReport({ ...report, recordsChecked: 1, budgetUsed: 1 });
+  async completeCheckpoint(runId: string, leaseToken: string, report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">>, outcome: CheckpointOutcome, siteReport?: SiteReportPayload): Promise<void> {
+    const delta = { ...dbReport({ ...report, recordsChecked: 1, budgetUsed: 1 }), ...(siteReport ? { siteReport } : {}) };
     const rows = await this.#query<{ completed: boolean }>(
       "select review_workspace.complete_run_checkpoint($1::uuid, $2::uuid, $3, $4::jsonb) as completed",
       [runId, leaseToken, outcome, JSON.stringify(delta)]

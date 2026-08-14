@@ -7,6 +7,7 @@ import { verificationReadiness } from "../../lib/verification/readiness.ts";
 import { RunControls } from "./run-controls.tsx";
 import { RunStatus } from "./run-status.tsx";
 import { CalibrationSummary } from "./calibration-summary.tsx";
+import { SiteReports } from "./site-reports.tsx";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 const statusLabel = (status: string) => status.replace(/_/g, " ");
@@ -64,6 +65,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   const candidates = isReviewer ? await reviewRepository.list({ status: text("status") as "staged" | "deferred" | "rejected" | "approved" | undefined, kind: text("kind") as "update" | "closure_review" | "new_resource" | undefined, evidenceQuality: text("evidenceQuality") as "high" | "medium" | "low" | undefined }) : [];
   let resources: Array<{ id: string; name: string }> = [];
   let runs: Awaited<ReturnType<typeof runRegistry.listRecent>> = [];
+  let siteReports: Awaited<ReturnType<typeof runRegistry.listRecentSiteReports>> = [];
   let calibration: Awaited<ReturnType<typeof reviewRepository.calibrationSummary>> = [];
   let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
   if (isOperator) {
@@ -71,6 +73,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
     if (readiness.ready) {
       resources = await reviewRepository.listSeededResources(100);
       runs = await runRegistry.listRecent();
+      siteReports = await runRegistry.listRecentSiteReports();
       calibration = await reviewRepository.calibrationSummary();
     }
   }
@@ -78,13 +81,35 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   return <main className="work-surface">
     <AppHeader />
     <section className="page-intro">
-      <h1>{isReviewer ? "Reviewer queue" : "Operator pilot"}</h1>
+      <p className="eyebrow">Directory audit workspace</p>
+      <h1>{isReviewer ? "Review CBO evidence" : "Run CBO audits"}</h1>
       <p>
         {isReviewer
-          ? "Review staged evidence and approve only the supported field changes. Nothing here publishes to ChicagoHealthMap production."
-          : "Launch a bounded evidence check. You need a reviewer grant to open staged candidates."}
+          ? "Check the outcome for every audited listing, then decide only the changes supported by evidence. Nothing here publishes automatically."
+          : "Audit current listings and inspect a durable report for every resource checked."}
       </p>
     </section>
+
+    {isOperator ? <section className="workflow-grid" aria-label="Verification workflow">
+      <article>
+        <span className="step-number">1</span>
+        <h2>Check current listings</h2>
+        <p>Select one or more copied listings. Firecrawl, Google, search, and the AI advisory produce one report per resource.</p>
+        <span className="availability active">Available now</span>
+      </article>
+      <article>
+        <span className="step-number">2</span>
+        <h2>Review the outcome</h2>
+        <p>Keep unchanged listings, inspect possible closures or updates, and retain incomplete audits for another attempt.</p>
+        <span className="availability active">Available now</span>
+      </article>
+      <article>
+        <span className="step-number">3</span>
+        <h2>Find new resources</h2>
+        <p>A separate discovery run will search approved Chicagoland categories, deduplicate leads, and send credible new resources to human review.</p>
+        <span className="availability planned">Backend lane next</span>
+      </article>
+    </section> : null}
 
     {isOperator && (
       !readiness?.ready
@@ -96,6 +121,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         : <RunControls resources={resources} />
     )}
 
+    {isOperator && <SiteReports reports={siteReports} />}
     {isOperator && <RunStatus runs={runs} />}
     {isOperator && <CalibrationSummary summaries={calibration} />}
 

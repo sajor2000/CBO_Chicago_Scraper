@@ -73,10 +73,31 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   assert.match(page, /verificationReadiness/);
   assert.match(page, /readiness-list/);
   assert.match(page, /RunStatus/);
+  assert.match(page, /SiteReports/);
+  assert.match(page, /listRecentSiteReports/);
   const status = readFileSync(new URL("../src/app/review/run-status.tsx", import.meta.url), "utf8");
-  assert.match(status, /Recent verification runs/);
+  assert.match(status, /Run history/);
   assert.match(status, /providerFailures/);
   assert.match(page, /CalibrationSummary/);
+});
+
+test("every completed resource has a durable, evidence-linked report surface", () => {
+  const reports = readFileSync(new URL("../src/app/review/site-reports.tsx", import.meta.url), "utf8");
+  const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
+  assert.match(reports, /Resource reports/);
+  assert.match(reports, /Keep — no supported change/);
+  assert.match(reports, /Review possible closure/);
+  assert.match(reports, /Verification incomplete/);
+  assert.match(reports, /View evidence and reasoning/);
+  assert.match(registry, /report_delta->'siteReport'/);
+  assert.match(registry, /run_checkpoint_outcomes/);
+});
+
+test("operator workflow separates current audits from planned new-resource discovery", () => {
+  const page = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /Check current listings/);
+  assert.match(page, /Find new resources/);
+  assert.match(page, /Backend lane next/);
 });
 
 test("review provenance exposes only redacted, structured advisory evidence", () => {
