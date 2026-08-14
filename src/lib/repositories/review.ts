@@ -273,10 +273,10 @@ const candidateSelect = `
   from review_workspace.candidate_current_state state
   join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
   left join review_workspace.resources resource on resource.id = revision.resource_id
-  left join lateral (
-    select source_payload from review_workspace.resource_snapshots
-    where resource_id = revision.resource_id order by imported_at desc limit 1
-  ) snapshot on true
+  left join review_workspace.candidate_revision_snapshot_links snapshot_link
+    on snapshot_link.candidate_revision_id = revision.id
+  left join review_workspace.resource_snapshots snapshot
+    on snapshot.id = snapshot_link.resource_snapshot_id
 `;
 
 /** Durable production repository. In-memory fixtures above remain intentionally synchronous. */
@@ -316,16 +316,18 @@ export class NeonReviewRepository {
     return rows.map(fromRow);
   }
 
-  async seededResource(resourceId: string): Promise<{ id: string; payload: Record<string, unknown> } | undefined> {
+  async seededResource(resourceId: string, snapshotId?: string): Promise<{ id: string; payload: Record<string, unknown> } | undefined> {
     const rows = await this.#query<{ id: string; source_payload: Record<string, unknown> }>(`
       select resource.id, snapshot.source_payload
       from review_workspace.resources resource
       join lateral (
         select source_payload from review_workspace.resource_snapshots
-        where resource_id = resource.id order by imported_at desc limit 1
+        where resource_id = resource.id
+          and ($2::uuid is null or id = $2::uuid)
+        order by imported_at desc limit 1
       ) snapshot on true
       where resource.id = $1::uuid
-    `, [resourceId]);
+    `, [resourceId, snapshotId ?? null]);
     const row = rows[0];
     return row && { id: row.id, payload: row.source_payload };
   }
@@ -479,17 +481,32 @@ export class NeonReviewRepository {
       with locked as (
         select pg_advisory_xact_lock(hashtextextended($1::text, 0))
       ), active_checkpoint as (
-        select checkpoint.run_id
+        select checkpoint.run_id, checkpoint.cycle_membership_id, membership.resource_snapshot_id
         from review_workspace.run_checkpoints checkpoint
         join review_workspace.run_current_state state on state.run_id = checkpoint.run_id
+        left join review_workspace.cycle_memberships membership on membership.id = checkpoint.cycle_membership_id
         where checkpoint.run_id = $2::uuid and checkpoint.resource_id = $1::uuid
           and checkpoint.lease_token = $8::uuid and checkpoint.state = 'leased'
           and state.status = 'running'
         for update of state
       ), snapshot as (
-        select snapshots.id from review_workspace.resource_snapshots snapshots
-        cross join locked cross join active_checkpoint
-        where snapshots.resource_id = $1::uuid order by snapshots.imported_at desc limit 1
+        select snapshots.id, active_checkpoint.cycle_membership_id
+        from active_checkpoint
+        join review_workspace.resource_snapshots snapshots
+          on snapshots.id = active_checkpoint.resource_snapshot_id and snapshots.resource_id = $1::uuid
+        cross join locked
+        union all
+        select snapshots.id, null::uuid
+        from active_checkpoint
+        join review_workspace.resource_snapshots snapshots on snapshots.resource_id = $1::uuid
+        cross join locked
+        where active_checkpoint.cycle_membership_id is null
+          and snapshots.id = (
+            select linked.resource_snapshot_id
+            from review_workspace.resource_snapshot_receipts receipt
+            join review_workspace.resource_snapshots linked on linked.id = receipt.resource_snapshot_id
+            where linked.resource_id = $1::uuid order by linked.imported_at desc limit 1
+          )
       ), previous as (
         select state.candidate_id, state.candidate_revision_id, state.revision
         from review_workspace.candidate_current_state state
@@ -516,6 +533,10 @@ export class NeonReviewRepository {
       ), linked_snapshot as (
         insert into review_workspace.candidate_revision_snapshot_links (candidate_revision_id, resource_snapshot_id)
         select inserted_revision.id, snapshot.id from inserted_revision cross join snapshot
+      ), linked_membership as (
+        insert into review_workspace.candidate_revision_cycle_memberships (candidate_revision_id, cycle_membership_id)
+        select inserted_revision.id, snapshot.cycle_membership_id from inserted_revision cross join snapshot
+        where snapshot.cycle_membership_id is not null
       ), updated_state as (
         update review_workspace.candidate_current_state state
         set candidate_revision_id = inserted_revision.id, revision = state.revision + 1,

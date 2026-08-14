@@ -1,4 +1,5 @@
 import type { CapturedObservation } from "../retrieval/types.ts";
+import type { CheckpointOutcome } from "../domain/review-workspace.ts";
 import type { RunReport } from "../runs/index.ts";
 import { verifyResource, type AiAdvisory, type ReferenceResource, type VerificationResult } from "./index.ts";
 
@@ -22,7 +23,7 @@ export async function processVerificationCheckpoint(input: {
   observations: CapturedObservation[];
   advisory?: AiAdvisory;
   stage: VerificationStage;
-}): Promise<{ result: VerificationResult; report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">> }> {
+}): Promise<{ result: VerificationResult; report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">>; outcome: CheckpointOutcome }> {
   const result = verifyResource({ resource: input.resource, observations: input.observations, advisory: input.advisory });
   const report = {
     candidatesStaged: result.state === "candidate_update" || result.state === "conflict" ? 1 : 0,
@@ -39,5 +40,9 @@ export async function processVerificationCheckpoint(input: {
       advisory: result.advisory
     });
   }
-  return { result, report };
+  const outcome: CheckpointOutcome = result.state === "candidate_update" ? "candidate_staged"
+    : result.state === "conflict" ? "conflict"
+      : result.state === "unable_to_verify" ? "unable_to_verify"
+        : report.providerFailures ? "provider_failure" : "verified_no_change";
+  return { result, report, outcome };
 }

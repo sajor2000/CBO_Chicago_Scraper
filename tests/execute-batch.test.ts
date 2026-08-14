@@ -10,7 +10,8 @@ test("execute route processes one checkpoint, sets maxDuration, and releases lea
   assert.match(route, /export const maxDuration = 60/);
   assert.match(route, /executeCheckpoint\(runId\)/);
   assert.match(worker, /claimNext\(runId\)/);
-  assert.match(worker, /completeCheckpoint\(runId, claim\.leaseToken, output\.report\)/);
+  assert.match(worker, /completeCheckpoint\(runId, claim\.leaseToken, output\.report, output\.outcome\)/);
+  assert.match(worker, /runRegistry\.status\(runId\)/);
   assert.match(worker, /releaseLease\(runId, leaseToken\)/);
   assert.doesNotMatch(route, /for \(let index = 0; index < limit/);
 });
@@ -22,6 +23,7 @@ test("execution bounds provider work and passes its lease to candidate staging",
   assert.match(worker, /within\(hostedEvidence\.collect\(resource\), 30_000/);
   assert.match(worker, /within\(hostedEvidence\.score\(resource, observations\), 15_000/);
   assert.match(worker, /leaseToken: claim\.leaseToken/);
+  assert.match(worker, /seededResource\(claim\.resourceId, claim\.snapshotId\)/);
   assert.match(repository, /active_checkpoint/);
   assert.match(repository, /checkpoint\.lease_token = \$8::uuid/);
   assert.match(repository, /state\.status = 'running'/);

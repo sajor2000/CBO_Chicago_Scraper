@@ -120,3 +120,52 @@ test("candidate staging serializes concurrent revisions for one resource", () =>
   assert.match(repository, /pg_advisory_xact_lock\(hashtextextended\(\$1::text, 0\)\)/);
   assert.match(repository, /cross join locked/);
 });
+
+test("recurring verification freezes promoted refresh membership and fences completion", () => {
+  const schema = migration("009_recurring_verification.sql");
+  for (const table of [
+    "refresh_manifests",
+    "refresh_source_receipts",
+    "refresh_snapshot_memberships",
+    "verification_cycles",
+    "cycle_memberships",
+    "run_checkpoint_outcomes",
+    "resource_verification_due"
+  ]) assert.match(schema, new RegExp(`create table (if not exists )?review_workspace\\.${table}`, "i"));
+
+  assert.match(schema, /status in \('running', 'reconciled', 'failed', 'abandoned'\)/i);
+  assert.match(schema, /foreign key \(resource_snapshot_id, resource_id\).*resource_snapshots\(id, resource_id\)/is);
+  assert.match(schema, /create unique index .*one_active_full_cycle.*where status in \('queued', 'running', 'paused'\)/is);
+  assert.match(schema, /outcome in \('verified_no_change', 'candidate_staged', 'conflict', 'unable_to_verify', 'provider_failure', 'cancelled', 'budget_exhausted'\)/i);
+  assert.match(schema, /lease_token uuid not null/i);
+  assert.match(schema, /interval '60 days'/i);
+  assert.match(schema, /outcome in \('verified_no_change', 'candidate_staged', 'conflict'\)/i);
+  assert.match(schema, /before update or delete on review_workspace\.run_checkpoint_outcomes/i);
+  assert.match(schema, /grant update \(status, promoted_at, completed_at, discrepancy_count\)\s+on review_workspace\.refresh_manifests to review_workspace_app/i);
+  assert.match(schema, /grant update \(run_parameters, budget_state\)\s+on review_workspace\.verification_runs to review_workspace_app/i);
+});
+
+test("recurring migration runner blocks ambiguous 004 ledger history without repairing it", () => {
+  const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
+  const packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  assert.match(runner, /004_baseline_imports\.sql/);
+  assert.match(runner, /schema_migrations/);
+  assert.match(runner, /preflight/i);
+  assert.match(runner, /fileURLToPath\(recurringPath\)/);
+  assert.doesNotMatch(runner, /delete from review_workspace\.schema_migrations/i);
+  assert.doesNotMatch(runner, /update review_workspace\.schema_migrations/i);
+  assert.match(packageJson, /apply:recurring-verification-migration/);
+});
+
+test("candidate staging binds the checkpoint membership snapshot instead of latest", () => {
+  const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
+  const method = repository.slice(repository.indexOf("async stageVerification"));
+  assert.match(method, /checkpoint\.cycle_membership_id/i);
+  assert.match(method, /cycle_memberships/i);
+  assert.doesNotMatch(method, /order by snapshots\.imported_at desc limit 1/i);
+});
+
+test("full-cycle checkpoints use memberships inserted by the same launch statement", () => {
+  const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
+  assert.match(registry, /left join frozen_memberships membership\s+on membership\.resource_id = requested\.resource_id::uuid/i);
+});

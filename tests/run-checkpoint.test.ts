@@ -17,6 +17,7 @@ test("a corroborated update stages its exact before value", async () => {
     stage: async (input) => { staged = input; }
   });
   assert.equal(output.result.state, "candidate_update");
+  assert.equal(output.outcome, "candidate_staged");
   assert.deepEqual(staged, { kind: "update", beforeValues: { address: "1 Old St" }, proposedValues: { address: "2 New St" }, observations: output.result.observations, advisory: output.result.advisory });
 });
 
@@ -28,6 +29,7 @@ test("a Google-only closure is staged for review without a closed field", async 
     stage: async (input) => { staged = input; }
   });
   assert.equal(output.result.state, "conflict");
+  assert.equal(output.outcome, "conflict");
   assert.equal(staged?.kind, "closure_review");
   assert.deepEqual(staged?.proposedValues, {});
 });
@@ -40,6 +42,7 @@ test("blocked sources are counted as unable to verify without staging a candidat
     stage: async () => { staged = true; }
   });
   assert.equal(output.result.state, "unable_to_verify");
+  assert.equal(output.outcome, "unable_to_verify");
   assert.equal(output.report.candidatesStaged, 0);
   assert.equal(output.report.unableToVerify, 1);
   assert.equal(staged, false);
