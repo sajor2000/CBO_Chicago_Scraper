@@ -520,6 +520,11 @@ export class NeonRunRegistry {
           to_jsonb(coalesce((current.report->>'providerFailures')::integer, 0) + 1)
         ), updated_at = now()
         where current.run_id in (select run_id from checkpoint)
+      ), failed_cycle as (
+        update review_workspace.verification_cycles cycle
+        set status = 'failed', completed_at = now()
+        from review_workspace.verification_runs run
+        where run.id in (select run_id from checkpoint) and cycle.id = run.cycle_id
       )
       update review_workspace.run_current_state state
       set status = 'failed', updated_at = now(), revision = revision + 1

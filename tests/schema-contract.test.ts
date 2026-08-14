@@ -128,6 +128,7 @@ test("durable runs reject unseeded selections and record execution failures", ()
   assert.match(runs, /Selected resources must have seeded public snapshots/);
   assert.match(runs, /async failCheckpoint/);
   assert.match(runs, /set status = 'failed'/);
+  assert.match(runs, /failed_cycle/);
 });
 
 test("recurring verification freezes promoted refresh membership and fences completion", () => {
