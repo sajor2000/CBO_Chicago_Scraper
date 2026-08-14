@@ -39,13 +39,14 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     if (!seeded) throw new Error("Selected resource has no seeded public snapshot.");
     const resource = referenceResourceFromSnapshot(seeded);
     const observations = await within(hostedEvidence.collect(resource), 30_000, "Evidence collection");
-    const advisory = await within(hostedEvidence.score(resource, observations), 25_000, "Evidence scoring");
+    const advisory = await within(hostedEvidence.score(resource, observations), 25_000, "Evidence scoring").catch(() => undefined);
     const output = await processVerificationCheckpoint({
       resource,
       observations,
       advisory,
       stage: (candidate) => reviewRepository.stageVerification({ resourceId: resource.id, runId, leaseToken: claim.leaseToken, ...candidate })
     });
+    if (!advisory) output.report.providerFailures = (output.report.providerFailures ?? 0) + 1;
     await runRegistry.completeCheckpoint(runId, claim.leaseToken, output.report, output.outcome);
     leaseToken = undefined;
     const runStatus = await runRegistry.status(runId);
