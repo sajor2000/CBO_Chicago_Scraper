@@ -2,8 +2,10 @@ import { UserButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { hasWorkspaceRole, WorkspaceTargetError } from "../../lib/db.ts";
 import { reviewRepository } from "../../lib/repositories/review.ts";
+import { runRegistry } from "../../lib/runs/index.ts";
 import { verificationReadiness } from "../../lib/verification/readiness.ts";
 import { RunControls } from "./run-controls.tsx";
+import { RunStatus } from "./run-status.tsx";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 const statusLabel = (status: string) => status.replace(/_/g, " ");
@@ -58,11 +60,13 @@ export default async function ReviewQueuePage() {
 
   const candidates = isReviewer ? await reviewRepository.list() : [];
   let resources: Array<{ id: string; name: string }> = [];
+  let runs: Awaited<ReturnType<typeof runRegistry.listRecent>> = [];
   let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
   if (isOperator) {
     readiness = await verificationReadiness();
     if (readiness.ready) {
       resources = await reviewRepository.listSeededResources(100);
+      runs = await runRegistry.listRecent();
     }
   }
 
@@ -86,6 +90,8 @@ export default async function ReviewQueuePage() {
         </section>
         : <RunControls resources={resources} />
     )}
+
+    {isOperator && <RunStatus runs={runs} />}
 
     {isReviewer ? (
       <section className="queue-panel" aria-labelledby="queue-title">

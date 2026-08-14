@@ -45,4 +45,8 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   assert.match(page, /ChicagoHealthMap/);
   assert.match(page, /verificationReadiness/);
   assert.match(page, /readiness-list/);
+  assert.match(page, /RunStatus/);
+  const status = readFileSync(new URL("../src/app/review/run-status.tsx", import.meta.url), "utf8");
+  assert.match(status, /Recent verification runs/);
+  assert.match(status, /providerFailures/);
 });
