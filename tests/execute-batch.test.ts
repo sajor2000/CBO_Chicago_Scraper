@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { executeScheduledCron } from "../src/app/api/cron/route.ts";
+import { providerIssuesFor } from "../src/lib/runs/execute-checkpoint.ts";
 import { CronAuthorizationError } from "../src/lib/runs/cron.ts";
 
 test("execute route processes one checkpoint, sets maxDuration, and releases leases on failure", () => {
@@ -23,13 +24,21 @@ test("execution bounds provider work and passes its lease to candidate staging",
   assert.match(worker, /within\(hostedEvidence\.collect\(resource\), 30_000/);
   assert.match(worker, /within\(hostedEvidence\.score\(resource, observations\), 25_000/);
   assert.match(worker, /if \(!advisory\) output\.report\.providerFailures/);
-  assert.match(worker, /console\.warn\("Verification provider issues"/);
-  assert.match(worker, /providerIssues, resourceId: claim\.resourceId/);
   assert.match(worker, /leaseToken: claim\.leaseToken/);
   assert.match(worker, /seededResource\(claim\.resourceId, claim\.snapshotId\)/);
   assert.match(repository, /active_checkpoint/);
   assert.match(repository, /checkpoint\.lease_token = \$8::uuid/);
   assert.match(repository, /state\.status = 'running'/);
+});
+
+test("provider diagnostics preserve retrieval and Azure failure states", () => {
+  const observations = [
+    { provider: "firecrawl" as const, state: "blocked" as const, observedAt: "2026-08-14T00:00:00Z" },
+    { provider: "google_places" as const, state: "success" as const, observedAt: "2026-08-14T00:00:00Z" }
+  ];
+  assert.deepEqual(providerIssuesFor(observations, new Error("Evidence scoring timed out.")), ["firecrawl:blocked", "azure_openai:timeout"]);
+  assert.deepEqual(providerIssuesFor(observations, new Error("Azure OpenAI response contains an invalid score.")), ["firecrawl:blocked", "azure_openai:malformed"]);
+  assert.deepEqual(providerIssuesFor([], new Error("Azure OpenAI request failed (429).")), ["azure_openai:http_429"]);
 });
 
 test("cron shares the checkpoint worker, requires a baseline, and processes one checkpoint", async () => {
