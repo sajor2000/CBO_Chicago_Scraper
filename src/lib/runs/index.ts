@@ -286,8 +286,8 @@ export class NeonRunRegistry {
         on conflict (idempotency_key) do nothing
         returning id
       ), inserted_state as (
-        insert into review_workspace.run_current_state (run_id)
-        select id from inserted_run on conflict (run_id) do nothing
+        insert into review_workspace.run_current_state (run_id, status)
+        select id, 'queued' from inserted_run on conflict (run_id) do nothing
       ), inserted_report as (
         insert into review_workspace.run_reports (run_id, report)
         select id, $4::jsonb from inserted_run on conflict (run_id) do nothing
