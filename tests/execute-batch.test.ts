@@ -21,7 +21,7 @@ test("execution bounds provider work and passes its lease to candidate staging",
   const worker = readFileSync(new URL("../src/lib/runs/execute-checkpoint.ts", import.meta.url), "utf8");
   const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
   assert.match(worker, /within\(hostedEvidence\.collect\(resource\), 30_000/);
-  assert.match(worker, /within\(hostedEvidence\.score\(resource, observations\), 15_000/);
+  assert.match(worker, /within\(hostedEvidence\.score\(resource, observations\), 25_000/);
   assert.match(worker, /leaseToken: claim\.leaseToken/);
   assert.match(worker, /seededResource\(claim\.resourceId, claim\.snapshotId\)/);
   assert.match(repository, /active_checkpoint/);
