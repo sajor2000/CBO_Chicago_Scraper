@@ -119,6 +119,16 @@ test("candidate staging serializes concurrent revisions for one resource", () =>
   const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
   assert.match(repository, /pg_advisory_xact_lock\(hashtextextended\(\$1::text, 0\)\)/);
   assert.match(repository, /cross join locked/);
+  assert.match(repository, /active_checkpoint/);
+  assert.match(repository, /checkpoint\.lease_token = \$8::uuid/);
+});
+
+test("durable runs reject unseeded selections and record execution failures", () => {
+  const runs = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
+  assert.match(runs, /Selected resources must have seeded public snapshots/);
+  assert.match(runs, /async failCheckpoint/);
+  assert.match(runs, /set status = 'failed'/);
+  assert.match(runs, /failed_cycle/);
 });
 
 test("recurring verification freezes promoted refresh membership and fences completion", () => {

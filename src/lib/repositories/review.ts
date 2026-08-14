@@ -487,6 +487,7 @@ export class NeonReviewRepository {
         left join review_workspace.cycle_memberships membership on membership.id = checkpoint.cycle_membership_id
         where checkpoint.run_id = $2::uuid and checkpoint.resource_id = $1::uuid
           and checkpoint.lease_token = $8::uuid and checkpoint.state = 'leased'
+          and checkpoint.lease_expires_at > now()
           and state.status = 'running'
         for update of state
       ), snapshot as (

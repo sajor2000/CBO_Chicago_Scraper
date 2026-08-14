@@ -281,6 +281,15 @@ export class NeonRunRegistry {
       throw new Error(`A positive budget, idempotency key, and at most ${input.maximumSelection} selected resources are required.`);
     }
     if (selection.some((resourceId) => !isUuid(resourceId))) throw new Error("Selected resource IDs must be UUIDs.");
+    const missing = await this.#query<{ resource_id: string }>(`
+      select selected.resource_id
+      from unnest($1::uuid[]) selected(resource_id)
+      where not exists (
+        select 1 from review_workspace.resource_snapshots snapshot
+        where snapshot.resource_id = selected.resource_id
+      )
+    `, [selection]);
+    if (missing.length) throw new Error("Selected resources must have seeded public snapshots.");
     const rows = await this.#query<{ id: string }>(`
       with active_cycle as (
         select cycle.id from review_workspace.verification_cycles cycle
@@ -492,6 +501,42 @@ export class NeonRunRegistry {
           updated_at = now(), revision = revision + 1
       where state.run_id = $1::uuid and exists (select 1 from released)
     `, [runId, leaseToken]);
+  }
+
+  async failCheckpoint(runId: string, leaseToken: string): Promise<void> {
+    const rows = await this.#query<{ run_id: string }>(`
+      with checkpoint as (
+        update review_workspace.run_checkpoints
+        set state = 'failed', lease_token = null, lease_expires_at = null,
+            report_delta = jsonb_build_object('providerFailures', 1), completed_at = now()
+        where run_id = $1::uuid and lease_token = $2::uuid and state = 'leased'
+          and lease_expires_at > now()
+        returning run_id
+      ), report as (
+        update review_workspace.run_reports current
+        set report = jsonb_set(
+          current.report,
+          '{providerFailures}',
+          to_jsonb(coalesce((current.report->>'providerFailures')::integer, 0) + 1)
+        ), updated_at = now()
+        where current.run_id in (select run_id from checkpoint)
+      ), failed_cycle as (
+        update review_workspace.verification_cycles cycle
+        set status = 'failed', completed_at = now()
+        from review_workspace.verification_runs run
+        where run.id in (select run_id from checkpoint) and cycle.id = run.cycle_id
+        returning cycle.id
+      )
+      update review_workspace.run_current_state state
+      set status = 'failed', updated_at = now(), revision = revision + 1
+      where state.run_id in (select run_id from checkpoint)
+        and (not exists (
+          select 1 from review_workspace.verification_runs run
+          where run.id = state.run_id and run.cycle_id is not null
+        ) or exists (select 1 from failed_cycle))
+      returning state.run_id
+    `, [runId, leaseToken]);
+    if (!rows[0]) throw new RunLockError();
   }
 
   async cancel(runId: string): Promise<void> {

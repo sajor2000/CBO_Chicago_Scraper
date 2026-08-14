@@ -5,7 +5,7 @@ import { executeScheduledCron } from "../src/app/api/cron/route.ts";
 import { providerIssuesFor } from "../src/lib/runs/execute-checkpoint.ts";
 import { CronAuthorizationError } from "../src/lib/runs/cron.ts";
 
-test("execute route processes one checkpoint, sets maxDuration, and releases leases on failure", () => {
+test("execute route processes one checkpoint, sets maxDuration, and records failures", () => {
   const route = readFileSync(new URL("../src/app/api/runs/[runId]/execute/route.ts", import.meta.url), "utf8");
   const worker = readFileSync(new URL("../src/lib/runs/execute-checkpoint.ts", import.meta.url), "utf8");
   assert.match(route, /export const maxDuration = 60/);
@@ -15,7 +15,7 @@ test("execute route processes one checkpoint, sets maxDuration, and releases lea
   assert.match(worker, /resourceName: resource\.name/);
   assert.match(worker, /evidence: reviewProvenance/);
   assert.match(worker, /runRegistry\.status\(runId\)/);
-  assert.match(worker, /releaseLease\(runId, leaseToken\)/);
+  assert.match(worker, /failCheckpoint\(runId, leaseToken\)/);
   assert.doesNotMatch(route, /for \(let index = 0; index < limit/);
 });
 
