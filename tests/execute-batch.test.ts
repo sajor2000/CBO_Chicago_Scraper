@@ -23,6 +23,8 @@ test("execution bounds provider work and passes its lease to candidate staging",
   assert.match(worker, /within\(hostedEvidence\.collect\(resource\), 30_000/);
   assert.match(worker, /within\(hostedEvidence\.score\(resource, observations\), 25_000/);
   assert.match(worker, /if \(!advisory\) output\.report\.providerFailures/);
+  assert.match(worker, /console\.warn\("Verification provider issues"/);
+  assert.match(worker, /providerIssues, resourceId: claim\.resourceId/);
   assert.match(worker, /leaseToken: claim\.leaseToken/);
   assert.match(worker, /seededResource\(claim\.resourceId, claim\.snapshotId\)/);
   assert.match(repository, /active_checkpoint/);
