@@ -17,6 +17,7 @@ export function ReviewActions({
   const [selected, setSelected] = useState(fields);
   const [draft, setDraft] = useState(proposedValues);
   const [reason, setReason] = useState("");
+  const [cboEligibility, setCboEligibility] = useState<"" | "eligible" | "not_eligible">("");
   const [message, setMessage] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -38,6 +39,7 @@ export function ReviewActions({
           action,
           fields: action === "approved" ? selected : undefined,
           proposedValues: action === "edit" ? draft : undefined,
+          reviewerCboEligibility: action === "approved" || action === "rejected" ? cboEligibility === "eligible" ? true : cboEligibility === "not_eligible" ? false : undefined : undefined,
           reason
         })
       });
@@ -100,6 +102,13 @@ export function ReviewActions({
         placeholder="Why is this evidence sufficient, incomplete, or incorrect?"
       />
     </label>
+    <fieldset disabled={busy}>
+      <legend>CBO eligibility assessment (optional)</legend>
+      <label><input type="radio" name="cbo-eligibility" checked={cboEligibility === ""} onChange={() => setCboEligibility("")} /> Not assessed</label>
+      <label><input type="radio" name="cbo-eligibility" checked={cboEligibility === "eligible"} onChange={() => setCboEligibility("eligible")} /> Eligible CBO</label>
+      <label><input type="radio" name="cbo-eligibility" checked={cboEligibility === "not_eligible"} onChange={() => setCboEligibility("not_eligible")} /> Not eligible CBO</label>
+      <p>Recorded only when approving or rejecting; it does not affect field approval.</p>
+    </fieldset>
     <div className="actions">
       <button type="button" className="primary-button" disabled={busy || !reason.trim() || !fields.length || selected.length === 0} onClick={() => void decide("approved")}>
         {busy ? "Saving…" : "Approve fields"}

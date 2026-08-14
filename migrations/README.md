@@ -11,5 +11,6 @@ Apply with `npm run apply:review-migrations` (requires `REVIEW_DATABASE_URL`).
 | `005_azure_exports.sql` | yes | Azure export staging |
 | `006_expanded_categories.sql` | yes | Expanded categories |
 | `007_live_verification.sql` | no | Mirror refresh / resource link tables for live verification; apply explicitly when ready |
+| `008_reviewer_cbo_eligibility.sql` | no | Additive reviewer-decision label; apply with `npm run apply:reviewer-cbo-eligibility-migration` |
 
 Do not reuse sequence numbers. Older plans that mention `004_live_verification.sql` now mean `007_live_verification.sql`.

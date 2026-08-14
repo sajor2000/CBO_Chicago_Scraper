@@ -55,6 +55,7 @@ After the manual canary is accepted, the same durable workflow runs through the 
 - Evidence/audit tables are append-only. Corrections create superseding records.
 - Official sites are primary operational evidence; Google Places corroborates. Search is discovery-only.
 - Azure OpenAI is advisory. It cannot create a category, merge organizations, set closure, or write a directory field.
+- Calibration compares GPT CBO eligibility only with an optional, explicit reviewer eligibility label on a terminal decision; field approval/rejection alone is never treated as that label.
 - Blocked, rate-limited, timed-out, absent, or contradictory sources are `unable_to_verify`/conflict outcomes.
 - Cron is production-only and secured by `CRON_SECRET`; previews do not run it. Start relying on it only after the documented manual canary passes.
 
