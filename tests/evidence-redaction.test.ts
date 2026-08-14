@@ -7,4 +7,5 @@ test("evidence redaction removes common secrets before persistence", () => {
   const redacted = redactEvidence('Bearer eyJ.token client_secret="secret" {"access_token":"token","password":"pass"}');
   assert.match(redacted, /Bearer \[redacted\]/);
   assert.doesNotMatch(redacted, /eyJ\.token|"secret"|"token"|"pass"/);
+  assert.equal(redactEvidence("Authorization: Bearer eyJ.authorization-token"), "Authorization=[redacted]");
 });
