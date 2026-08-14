@@ -13,7 +13,7 @@ test("Azure OpenAI scorer sends bounded evidence and accepts only structured adv
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ geography: 90, organizationType: 80, serviceFit: 75, identity: 88, operationalEvidence: 70, cboEligibility: "confirmed_cbo", operationalAssessment: "open", evidenceQuality: "high", citations: ["firecrawl", "google_places"], suggestedCategory: "food_pantry", rationale: "official site offers groceries" }) } }] }), { status: 200 });
     }
   });
-  const result = await scorer.score({ name: "Example Pantry", evidence: "x".repeat(9000), citationProviders: ["firecrawl", "google_places"] });
+  const result = await scorer.score({ name: "Example Pantry", evidence: `api-key=do-not-send ${"x".repeat(9000)}`, citationProviders: ["firecrawl", "google_places"] });
   assert.equal(result.identity, 88);
   assert.equal(result.cboEligibility, "confirmed_cbo");
   assert.equal(result.operationalAssessment, "open");
@@ -21,6 +21,7 @@ test("Azure OpenAI scorer sends bounded evidence and accepts only structured adv
   assert.ok(requestBody.length < 7000);
   assert.equal(JSON.parse(requestBody).max_completion_tokens, 500);
   assert.equal(JSON.parse(requestBody).temperature, undefined);
+  assert.doesNotMatch(requestBody, /do-not-send/);
 });
 
 test("Azure OpenAI audit prompt prohibits tool use and production decisions", async () => {

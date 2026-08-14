@@ -1,3 +1,5 @@
+import { redactEvidence } from "../evidence/redaction.ts";
+
 export interface AiScore {
   geography: number;
   organizationType: number;
@@ -63,7 +65,7 @@ export class AzureOpenAiScorer {
   }
 
   async score(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[] }): Promise<AiScore> {
-    const evidence = input.evidence.slice(0, 6_000);
+    const evidence = redactEvidence(input.evidence).slice(0, 6_000);
     const response = await this.#fetch(`${this.#endpoint}/openai/deployments/${encodeURIComponent(this.#deployment)}/chat/completions?api-version=2024-10-21`, {
       method: "POST",
       headers: { "api-key": this.#apiKey, "content-type": "application/json" },
