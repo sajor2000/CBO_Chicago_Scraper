@@ -116,6 +116,21 @@ export class TavilyClient {
   }
 }
 
+export class ExaClient {
+  #apiKey: string; #fetch: Fetch;
+  constructor(input: { apiKey: string; fetch?: Fetch }) { if (!input.apiKey) throw new Error("Exa is not configured."); this.#apiKey = input.apiKey; this.#fetch = input.fetch ?? fetch; }
+  async search(query: string, options: { maxResults?: number } = {}): Promise<ProviderCapture> {
+    const result = await requestJson(this.#fetch, "https://api.exa.ai/search", {
+      method: "POST",
+      headers: { "x-api-key": this.#apiKey, "content-type": "application/json" },
+      body: JSON.stringify({ query, type: "fast", numResults: Math.min(Math.max(options.maxResults ?? 3, 1), 5), moderation: true, contents: { highlights: true } })
+    });
+    const hit = first(result.payload?.results);
+    const highlight = Array.isArray(hit?.highlights) ? hit.highlights.find((value): value is string => typeof value === "string") : undefined;
+    return hit ? captured("search_fallback", "success", { sourceUrl: text(hit.url), excerpt: excerpt(highlight) ?? excerpt(hit.text), values: { name: text(hit.title), url: text(hit.url) } }) : captured("search_fallback", result.state ?? "no_result");
+  }
+}
+
 class SearchEndpointClient {
   #provider: "irs" | "trusted_directory"; #endpoint: string; #fetch: Fetch;
   constructor(provider: "irs" | "trusted_directory", input: { endpoint: string; fetch?: Fetch }) { this.#provider = provider; this.#endpoint = secureUrl(input.endpoint).toString(); this.#fetch = input.fetch ?? fetch; }

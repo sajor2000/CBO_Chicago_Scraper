@@ -21,3 +21,11 @@ test("verification readiness blocks a missing workspace, baseline, or required c
   assert.doesNotMatch(JSON.stringify(readiness), /test-secret/);
   assert.throws(() => assertHostedVerificationConfigured({}), /FIRECRAWL_API_KEY/);
 });
+
+test("manual verification accepts Exa without requiring scheduler credentials", () => {
+  assert.doesNotThrow(() => assertHostedVerificationConfigured({
+    FIRECRAWL_API_KEY: "firecrawl", GOOGLE_MAPS_API_KEY: "google", EXA_API_KEY: "exa",
+    AZURE_OPENAI_ENDPOINT: "https://example.openai.azure.com", AZURE_OPENAI_API_KEY: "azure",
+    AZURE_OPENAI_DEPLOYMENT: "gpt-5.6-sol"
+  }));
+});

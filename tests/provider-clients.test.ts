@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { formatAuditEvidence } from "../src/lib/providers/hosted-evidence.ts";
-import { FirecrawlClient, GooglePlacesClient, IrsClient, TavilyClient, TrustedDirectoryClient } from "../src/lib/providers/index.ts";
+import { ExaClient, FirecrawlClient, GooglePlacesClient, IrsClient, TavilyClient, TrustedDirectoryClient } from "../src/lib/providers/index.ts";
 
 test("Firecrawl uses a bounded v2 scrape request", async () => {
   let request: Request | undefined;
@@ -79,6 +79,19 @@ test("Google Places and Tavily return bounded, advisory observations", async () 
   assert.deepEqual(place.values, { name: "Example Pantry", address: "1 Main St", phone: "+1 312-555-0100", url: "https://example.org", businessStatus: "closed" });
   assert.equal(search.excerpt, "A community pantry");
   assert.equal(search.sourceUrl, "https://example.org");
+});
+
+test("Exa uses the configured discovery fallback without authorizing scrape targets", async () => {
+  let request: Request | undefined;
+  const exa = new ExaClient({ apiKey: "secret", fetch: async (url, init) => {
+    request = new Request(url, init);
+    return Response.json({ results: [{ title: "Example Pantry", url: "https://example.org", highlights: ["Food assistance in Chicago"] }] });
+  } });
+  const result = await exa.search("Example Pantry Chicago", { maxResults: 99 });
+  assert.equal(result.provider, "search_fallback");
+  assert.equal(result.excerpt, "Food assistance in Chicago");
+  assert.equal(request?.headers.get("x-api-key"), "secret");
+  assert.deepEqual(await request?.json(), { query: "Example Pantry Chicago", type: "fast", numResults: 5, moderation: true, contents: { highlights: true } });
 });
 
 test("GPT audit input retains bounded structured provider evidence", () => {
