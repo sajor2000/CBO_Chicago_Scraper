@@ -9,6 +9,7 @@ export type CheckpointResult = Pick<RunReport, "recordsChecked" | "candidatesSta
   runStatus?: string;
   state?: string;
   reasons?: string[];
+  providerIssues?: string[];
   resourceId?: string;
 };
 
@@ -40,6 +41,11 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     const resource = referenceResourceFromSnapshot(seeded);
     const observations = await within(hostedEvidence.collect(resource), 30_000, "Evidence collection");
     const advisory = await within(hostedEvidence.score(resource, observations), 25_000, "Evidence scoring").catch(() => undefined);
+    const providerIssues = observations
+      .filter((observation) => observation.state !== "success" && observation.state !== "no_result")
+      .map((observation) => `${observation.provider}:${observation.state}`);
+    if (!advisory) providerIssues.push("azure_openai:unavailable");
+    if (providerIssues.length) console.warn("Verification provider issues", { runId, resourceId: claim.resourceId, providerIssues });
     const output = await processVerificationCheckpoint({
       resource,
       observations,
@@ -56,7 +62,7 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
       conflicts: output.report.conflicts ?? 0,
       unableToVerify: output.report.unableToVerify ?? 0,
       providerFailures: output.report.providerFailures ?? 0,
-      state: output.result.state, reasons: output.result.reasons, resourceId: claim.resourceId,
+      state: output.result.state, reasons: output.result.reasons, providerIssues, resourceId: claim.resourceId,
       done: runStatus === "completed" || runStatus === "cancelled", runStatus
     };
   } catch (error) {
