@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   CboSourceProfileError,
   profileCboSource,
   sourceProfileConfigFromEnv
 } from "../src/lib/imports/cbo-source-profile.ts";
+
+test("normalized WIC rows always use the wic location type", async () => {
+  const sql = await readFile(new URL("../sql/source/cbo_public_directory_v1.sql", import.meta.url), "utf8");
+
+  assert.match(sql, /'wic'::text as location_type/);
+  assert.doesNotMatch(sql, /wic\.location_type/);
+});
 
 const config = {
   databaseUrl: "postgres://private-source",

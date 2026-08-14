@@ -31,7 +31,7 @@ select
   wic.city,
   wic.state,
   wic.zip_code,
-  coalesce(wic.location_type, 'wic')::text as location_type,
+  'wic'::text as location_type,
   wic.website,
   wic.latitude,
   wic.longitude,
