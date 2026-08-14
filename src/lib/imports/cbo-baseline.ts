@@ -7,7 +7,9 @@ export type CboSourceConfig = {
   databaseUrl: string;
   profileName: string;
   sourceName: string;
+  mode: "normalized_view" | "direct_tables";
   table: string;
+  tables: string[];
   idColumn: string;
   fields: string[];
 };
@@ -42,7 +44,9 @@ export function sourceConfigFromEnv(env: Record<string, string | undefined> = pr
     databaseUrl: env.SOURCE_DATABASE_URL ?? "",
     profileName: profile.name,
     sourceName: profile.sourceName,
+    mode: profile.mode,
     table: profile.table,
+    tables: [...profile.tables],
     idColumn: profile.idColumn,
     fields: [...profile.fields]
   };
@@ -60,14 +64,17 @@ export function validateConfig(config: CboSourceConfig) {
   } catch {
     throw new CboBaselineImportError("CBO source profile is not approved.");
   }
-  if (config.sourceName !== profile.sourceName || config.table !== profile.table || config.idColumn !== profile.idColumn || config.fields.join(",") !== profile.fields.join(",")) {
+  if (config.sourceName !== profile.sourceName || config.mode !== profile.mode || config.table !== profile.table || config.tables.join(",") !== profile.tables.join(",") || config.idColumn !== profile.idColumn || config.fields.join(",") !== profile.fields.join(",")) {
     throw new CboBaselineImportError("CBO source configuration must match its approved profile.");
   }
-  const parts = config.table.split(".");
-  if (parts.length !== 2 || !parts.every(isPostgresIdentifier)) {
+  const relations = config.mode === "direct_tables" ? config.tables : [config.table];
+  if (!relations.every((relation) => {
+    const parts = relation.split(".");
+    return parts.length === 2 && parts.every(isPostgresIdentifier);
+  })) {
     throw new CboBaselineImportError("CBO source table must be schema-qualified.");
   }
-  if (["pg_catalog", "information_schema"].includes(parts[0])) {
+  if (relations.some((relation) => ["pg_catalog", "information_schema"].includes(relation.split(".")[0]!))) {
     throw new CboBaselineImportError("CBO source table must not use a system schema.");
   }
   if (!isPostgresIdentifier(config.idColumn) || !config.fields.every(isPostgresIdentifier)) {
@@ -107,6 +114,7 @@ export function preflightRows(rows: SourceRow[]) {
 
 export async function readSourceRows(config: CboSourceConfig, query: NeonQueryFunction<false, false> = neon(config.databaseUrl)): Promise<SourceRow[]> {
   validateConfig(config);
+  if (config.mode === "direct_tables") return readDirectSourceRows(config, query);
   const [schema, table] = config.table.split(".") as [string, string];
   const relation = await query.query(
     `select c.relkind = 'v' as is_profile_relation
@@ -131,6 +139,70 @@ export async function readSourceRows(config: CboSourceConfig, query: NeonQueryFu
     `select ${quotePostgresIdentifier(config.idColumn)}::text as source_id, jsonb_build_object(${jsonPairs}) as payload
      from ${quotePostgresIdentifier(schema)}.${quotePostgresIdentifier(table)}`
   ) as Array<{ source_id: string | null; payload: Record<string, unknown> }>;
+  return rows.map((row) => ({ sourceId: row.source_id ?? "", payload: row.payload }));
+}
+
+async function readDirectSourceRows(config: CboSourceConfig, query: NeonQueryFunction<false, false>): Promise<SourceRow[]> {
+  const expected = config.tables.map((relation) => relation.split(".")[1]);
+  const relations = await query.query(
+    `select c.relname
+     from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind = 'r' and c.relname = any($1::text[])`,
+    [expected]
+  ) as Array<{ relname: string }>;
+  if (relations.length !== expected.length || relations.some(({ relname }) => !expected.includes(relname))) {
+    throw new CboBaselineImportError("Configured CBO source tables are unavailable.");
+  }
+
+  const requiredColumns = {
+    community_resource_locations: ["id", "organization_name", "location_type", "full_address", "hyperlink", "latitude", "longitude", "categories", "status", "capacity", "phone", "email", "hours", "languages", "description", "confidence", "sources", "last_verified", "last_enriched", "created_at", "updated_at"],
+    wic_locations: ["wic_id", "location_name", "location_type", "full_address", "city", "state", "zip_code", "county", "fips_state", "fips_county", "phone", "website", "longitude", "latitude", "source_date", "created_at", "updated_at"]
+  } as const;
+  const columns = await query.query(
+    `select table_name, column_name from information_schema.columns
+     where table_schema = 'public' and table_name = any($1::text[])`,
+    [expected]
+  ) as Array<{ table_name: keyof typeof requiredColumns; column_name: string }>;
+  for (const [table, required] of Object.entries(requiredColumns)) {
+    const available = new Set(columns.filter((column) => column.table_name === table).map((column) => column.column_name));
+    if (!required.every((column) => available.has(column))) throw new CboBaselineImportError("Configured CBO source columns are unavailable.");
+  }
+
+  const rows = await query.query(`
+    select 'community_resource:' || resource.id::text as source_id,
+      jsonb_build_object(
+        'organization_name', resource.organization_name, 'location_name', null,
+        'full_address', resource.full_address, 'city', null, 'state', null, 'zip_code', null,
+        'location_type', resource.location_type, 'website', resource.hyperlink, 'phone', resource.phone,
+        'latitude', resource.latitude, 'longitude', resource.longitude, 'description', resource.description,
+        'source_relation', 'community_resource_locations', 'source_record', jsonb_build_object(
+          'id', resource.id, 'organization_name', resource.organization_name, 'location_type', resource.location_type,
+          'full_address', resource.full_address, 'hyperlink', resource.hyperlink, 'latitude', resource.latitude,
+          'longitude', resource.longitude, 'categories', resource.categories, 'status', resource.status,
+          'capacity', resource.capacity, 'phone', resource.phone, 'email', resource.email, 'hours', resource.hours,
+          'languages', resource.languages, 'description', resource.description, 'confidence', resource.confidence,
+          'sources', resource.sources, 'last_verified', resource.last_verified, 'last_enriched', resource.last_enriched,
+          'created_at', resource.created_at, 'updated_at', resource.updated_at
+        )
+      ) as payload
+    from public.community_resource_locations resource
+    union all
+    select 'wic:' || wic.wic_id::text as source_id,
+      jsonb_build_object(
+        'organization_name', null, 'location_name', wic.location_name,
+        'full_address', wic.full_address, 'city', wic.city, 'state', wic.state, 'zip_code', wic.zip_code,
+        'location_type', 'wic', 'website', wic.website, 'phone', wic.phone,
+        'latitude', wic.latitude, 'longitude', wic.longitude, 'description', null,
+        'source_relation', 'wic_locations', 'source_record', jsonb_build_object(
+          'wic_id', wic.wic_id, 'location_name', wic.location_name, 'location_type', wic.location_type,
+          'full_address', wic.full_address, 'city', wic.city, 'state', wic.state, 'zip_code', wic.zip_code,
+          'county', wic.county, 'fips_state', wic.fips_state, 'fips_county', wic.fips_county,
+          'phone', wic.phone, 'website', wic.website, 'longitude', wic.longitude, 'latitude', wic.latitude,
+          'source_date', wic.source_date, 'created_at', wic.created_at, 'updated_at', wic.updated_at
+        )
+      ) as payload
+    from public.wic_locations wic
+  `) as Array<{ source_id: string | null; payload: Record<string, unknown> }>;
   return rows.map((row) => ({ sourceId: row.source_id ?? "", payload: row.payload }));
 }
 

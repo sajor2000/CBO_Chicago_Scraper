@@ -86,7 +86,8 @@ test("profiles only the approved normalized view and never includes source detai
   );
 });
 
-test("source-profile documentation links to the checked-in view SQL", () => {
+test("source-profile documentation requires the direct read-only profile without source DDL", () => {
   const profile = readFileSync(new URL("../docs/data/cbo-source-profile.md", import.meta.url), "utf8");
-  assert.match(profile, /\.\.\/\.\.\/sql\/source\/cbo_public_directory_v1\.sql/);
+  assert.match(profile, /CBO_SOURCE_PROFILE=chicagohealthmap-direct-v2/);
+  assert.match(profile, /No source view or other source-side DDL is required/);
 });
