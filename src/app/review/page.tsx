@@ -2,7 +2,11 @@ import { UserButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { hasWorkspaceRole, WorkspaceTargetError } from "../../lib/db.ts";
 import { reviewRepository } from "../../lib/repositories/review.ts";
+import { runRegistry } from "../../lib/runs/index.ts";
+import { verificationReadiness } from "../../lib/verification/readiness.ts";
 import { RunControls } from "./run-controls.tsx";
+import { RunStatus } from "./run-status.tsx";
+import { CalibrationSummary } from "./calibration-summary.tsx";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 const statusLabel = (status: string) => status.replace(/_/g, " ");
@@ -28,7 +32,7 @@ function AuthGate({ title, body, href, linkLabel }: { title: string; body: strin
   </main>;
 }
 
-export default async function ReviewQueuePage() {
+export default async function ReviewQueuePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { userId } = await auth();
   if (!userId) {
     return <AuthGate title="Sign in required" body="Open the review workspace with a ChicagoHealthMap Clerk account." href="/sign-in" linkLabel="Go to sign in" />;
@@ -55,15 +59,19 @@ export default async function ReviewQueuePage() {
     />;
   }
 
-  const candidates = isReviewer ? await reviewRepository.list() : [];
+  const filters = await searchParams;
+  const text = (key: string) => typeof filters[key] === "string" ? filters[key] : undefined;
+  const candidates = isReviewer ? await reviewRepository.list({ status: text("status") as "staged" | "deferred" | "rejected" | "approved" | undefined, kind: text("kind") as "update" | "closure_review" | "new_resource" | undefined, evidenceQuality: text("evidenceQuality") as "high" | "medium" | "low" | undefined }) : [];
   let resources: Array<{ id: string; name: string }> = [];
-  let baselineError: string | undefined;
+  let runs: Awaited<ReturnType<typeof runRegistry.listRecent>> = [];
+  let calibration: Awaited<ReturnType<typeof reviewRepository.calibrationSummary>> = [];
+  let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
   if (isOperator) {
-    try {
-      await reviewRepository.assertBaselineReady();
+    readiness = await verificationReadiness();
+    if (readiness.ready) {
       resources = await reviewRepository.listSeededResources(100);
-    } catch (error) {
-      baselineError = error instanceof Error ? error.message : "Baseline is not ready for a pilot.";
+      runs = await runRegistry.listRecent();
+      calibration = await reviewRepository.calibrationSummary();
     }
   }
 
@@ -79,17 +87,27 @@ export default async function ReviewQueuePage() {
     </section>
 
     {isOperator && (
-      baselineError
+      !readiness?.ready
         ? <section className="pilot-panel" aria-labelledby="pilot-title">
           <h2 id="pilot-title">Run a small evidence check</h2>
-          <p className="pilot-empty">{baselineError} Complete a reconciled baseline import before launching a pilot.</p>
+          <p className="pilot-empty">Verification is blocked until all readiness checks pass.</p>
+          <ul className="readiness-list">{readiness?.checks.filter((check) => !check.ready).map((check) => <li key={check.name}><strong>{check.name}:</strong> {check.message}</li>)}</ul>
         </section>
         : <RunControls resources={resources} />
     )}
 
+    {isOperator && <RunStatus runs={runs} />}
+    {isOperator && <CalibrationSummary summaries={calibration} />}
+
     {isReviewer ? (
       <section className="queue-panel" aria-labelledby="queue-title">
         <h2 id="queue-title">Staged candidates</h2>
+        <form className="queue-filters" action="/review">
+          <label>Status <select name="status" defaultValue={text("status") ?? ""}><option value="">All</option><option value="staged">Staged</option><option value="deferred">Deferred</option><option value="rejected">Rejected</option><option value="approved">Approved</option></select></label>
+          <label>Kind <select name="kind" defaultValue={text("kind") ?? ""}><option value="">All</option><option value="update">Update</option><option value="closure_review">Closure review</option><option value="new_resource">New resource</option></select></label>
+          <label>Evidence quality <select name="evidenceQuality" defaultValue={text("evidenceQuality") ?? ""}><option value="">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+          <button type="submit">Filter</button>
+        </form>
         {candidates.length ? (
           <ul className="candidate-list">
             {candidates.map((candidate) => {

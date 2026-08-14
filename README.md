@@ -31,14 +31,14 @@ The default service-location boundary is the seven-county Chicagoland/CMAP regio
 
 The app needs a polished, simple interface for a small ChicagoHealthMap team—not an engineering console. It must let an operator manually start a bounded agentic crawling run, follow its progress and failure states, and hand reviewers a clear queue of evidence-backed field diffs. Reviewers should be able to understand the resource, sources, confidence, and proposed change on one screen before approving, rejecting, or deferring individual fields.
 
-After the manual pilot is accepted, the same durable workflow will run automatically **once every two months** through a Vercel cron job. Cron must enqueue the same checkpointed work as the manual trigger, prevent overlapping runs, obey provider budgets, and never bypass human review.
+After the manual canary is accepted, the same durable workflow runs through the secured Vercel Cron endpoint. The current production schedule invokes one checkpoint every five minutes for the monthly cohort; it prevents overlapping work, obeys provider budgets, and never bypasses human review.
 
 ## Tech stack
 
 | Layer | Choice | Responsibility |
 | --- | --- | --- |
 | Web app | Next.js 16 + React 19 + TypeScript | Reviewer queue, operator controls, server routes |
-| Hosting | Vercel | Preview/production deployment, manual trigger, and guarded every-two-month cron entry point |
+| Hosting | Vercel | Preview/production deployment, manual trigger, and guarded five-minute Cron entry point |
 | Authentication | Clerk | Small-team sign-in; server-side reviewer/operator authorization |
 | Review database | Neon PostgreSQL + PostGIS | CBO/WIC copies and the `review_workspace` audit workflow |
 | Evidence storage | Vercel Blob | Private raw evidence artifacts when configured |
@@ -55,8 +55,9 @@ After the manual pilot is accepted, the same durable workflow will run automatic
 - Evidence/audit tables are append-only. Corrections create superseding records.
 - Official sites are primary operational evidence; Google Places corroborates. Search is discovery-only.
 - Azure OpenAI is advisory. It cannot create a category, merge organizations, set closure, or write a directory field.
+- Calibration compares GPT CBO eligibility only with an optional, explicit reviewer eligibility label on a terminal decision; field approval/rejection alone is never treated as that label.
 - Blocked, rate-limited, timed-out, absent, or contradictory sources are `unable_to_verify`/conflict outcomes.
-- Cron is intentionally disabled in [vercel.json](vercel.json) until a manual pilot is accepted.
+- Cron is production-only and secured by `CRON_SECRET`; previews do not run it. Start relying on it only after the documented manual canary passes.
 
 ## Repository map
 
@@ -66,10 +67,12 @@ src/lib/providers/       Firecrawl, Google Places, Tavily, IRS, directory adapte
 src/lib/verification/    Deterministic evidence checks and checkpoint workflow
 src/lib/repositories/    Neon review/audit persistence
 src/lib/ai/              Azure OpenAI advisory scorer
-migrations/              Ordered Neon review-workspace migrations
+migrations/              Ordered Neon review-workspace migrations (001–006 applied via npm script; 007 pending)
 scripts/                 Source profiling and baseline import commands
+sql/source/              Read-only source view definitions for the Neon mirror
 tests/                   Node contract and workflow tests
-docs/                    Runbooks, data dictionary, policy, and delivery plans
+docs/                    See docs/README.md — ops, policy, data, and delivery plans
+PRODUCT.md / DESIGN.md   Impeccable product and visual context (repo root)
 ```
 
 ## Local setup
@@ -101,7 +104,7 @@ npm run build   # Production Next.js build
 3. Grant Clerk `reviewer` and `operator` roles in `review_workspace.reviewer_access`.
 4. Configure provider secrets in Vercel and run a one-record manual pilot from `/review`.
 5. Review the evidence and candidate UX before widening the batch.
-6. Keep cron disabled until the manual pilot, reviewer workflow, and cost guardrails are accepted; then enable the guarded every-two-month Vercel schedule.
+6. Run the one-resource manual canary, then the documented 10-checkpoint canary. Stop on the runbook thresholds before relying on the guarded production Cron schedule.
 7. Build/test the manual Azure patch handoff only after the Azure schema/key/version contract and a non-production target are available.
 
 ## Codex handoff
@@ -112,7 +115,7 @@ Start with these files, in order:
 
 1. [docs/handoff-codex.md](docs/handoff-codex.md) — live status, Neon baseline, Vercel 500 blocker, next tasks.
 2. [docs/plans/2026-08-13-feat-live-verification-pilot.md](docs/plans/2026-08-13-feat-live-verification-pilot.md) — manual-pilot scope and safety rules.
-3. [docs/operator-runbook.md](docs/operator-runbook.md) and [docs/source-policy.md](docs/source-policy.md) — operational boundaries.
+3. [docs/ops/operator-runbook.md](docs/ops/operator-runbook.md) and [docs/policy/source-policy.md](docs/policy/source-policy.md) — operational boundaries.
 4. [src/lib/verification/run-checkpoint.ts](src/lib/verification/run-checkpoint.ts) — one-checkpoint verification lifecycle.
 5. [src/lib/providers/hosted-evidence.ts](src/lib/providers/hosted-evidence.ts) — provider orchestration.
 6. [src/lib/repositories/review.ts](src/lib/repositories/review.ts) and [src/lib/runs/index.ts](src/lib/runs/index.ts) — durable Neon state.
@@ -122,9 +125,11 @@ Before changing behavior, run `npm run check`. Preserve the review-first boundar
 
 ## Further documentation
 
-- [Operator runbook](docs/operator-runbook.md)
-- [Operations](docs/operations.md)
-- [Security and secrets](docs/security-and-secrets.md)
-- [Data dictionary](docs/data-dictionary.md)
-- [Reviewer guide](docs/reviewer-guide.md)
-- [Source policy](docs/source-policy.md)
+Index: [docs/README.md](docs/README.md)
+
+- [Operator runbook](docs/ops/operator-runbook.md)
+- [Operations](docs/ops/operations.md)
+- [Security and secrets](docs/ops/security-and-secrets.md)
+- [Data dictionary](docs/data/data-dictionary.md)
+- [Reviewer guide](docs/policy/reviewer-guide.md)
+- [Source policy](docs/policy/source-policy.md)

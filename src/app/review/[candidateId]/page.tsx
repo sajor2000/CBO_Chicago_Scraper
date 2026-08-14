@@ -4,6 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { requireWorkspaceRole, WorkspaceAuthorizationError, WorkspaceTargetError } from "../../../lib/db.ts";
 import { reviewRepository } from "../../../lib/repositories/review.ts";
 import { ReviewActions } from "../review-actions.tsx";
+import { ReviewHistory } from "../review-history.tsx";
+import { ReviewProvenanceCard } from "../review-provenance.tsx";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 const statusLabel = (status: string) => status.replace(/_/g, " ");
@@ -85,16 +87,8 @@ export default async function CandidateReviewPage({ params }: { params: Promise<
       )}
     </section>
 
-    <section className="detail-panel" aria-labelledby="evidence-title">
-      <h2 id="evidence-title">Evidence</h2>
-      {candidate.evidence.length ? (
-        <ul className="evidence-list">
-          {candidate.evidence.map((item) => <li key={item}>{item.startsWith("http") ? <a href={item} target="_blank" rel="noreferrer">{item}</a> : item}</li>)}
-        </ul>
-      ) : (
-        <p>No evidence URLs were attached to this revision.</p>
-      )}
-    </section>
+    <ReviewProvenanceCard evidence={candidate.evidence} provenance={candidate.provenance} />
+    <ReviewHistory decisions={candidate.decisions} />
 
     <ReviewActions candidateId={candidate.id} expectedRevision={candidate.revision} proposedValues={candidate.proposedValues} />
   </main>;

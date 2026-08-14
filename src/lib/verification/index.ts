@@ -15,6 +15,11 @@ export interface ReferenceResource {
 }
 
 export interface AiAdvisory {
+  promptVersion?: string;
+  cboEligibility?: "confirmed_cbo" | "likely_cbo" | "not_a_cbo" | "insufficient_evidence";
+  operationalAssessment?: "open" | "closure_suspected" | "unknown";
+  evidenceQuality?: "high" | "medium" | "low";
+  citations?: string[];
   suggestedCategory?: string;
   mergeWithResourceId?: string;
   close?: boolean;

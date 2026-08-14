@@ -13,10 +13,11 @@ test("a corroborated update stages its exact before value", async () => {
       { provider: "firecrawl", state: "success", observedAt, values: { address: "2 New St" } },
       { provider: "google_places", state: "success", observedAt, values: { address: "2 New St" } }
     ],
+    advisory: { promptVersion: "cbo-audit-v1", cboEligibility: "confirmed_cbo", operationalAssessment: "open", evidenceQuality: "high", citations: ["firecrawl", "google_places"], rationale: "Corroborated." },
     stage: async (input) => { staged = input; }
   });
   assert.equal(output.result.state, "candidate_update");
-  assert.deepEqual(staged, { kind: "update", beforeValues: { address: "1 Old St" }, proposedValues: { address: "2 New St" }, observations: output.result.observations });
+  assert.deepEqual(staged, { kind: "update", beforeValues: { address: "1 Old St" }, proposedValues: { address: "2 New St" }, observations: output.result.observations, advisory: output.result.advisory });
 });
 
 test("a Google-only closure is staged for review without a closed field", async () => {

@@ -2,7 +2,17 @@
 
 Clerk controls access through a signed-in account whose subject has an active `operator` grant in the review workspace. Start a dry run through `POST /api/runs` with a unique idempotency key, bounded source selection, and budget. Repeating the same key returns the same run. Use `PATCH /api/runs` to cancel or resume; completion advances one durable checkpoint at a time. Cancelling releases an unfinished lease; a stale worker cannot complete it.
 
-Cron is intentionally disabled (`vercel.json` has no schedules). After a manual non-production acceptance run, enable one `/api/cron` schedule and set `CRON_SECRET`; the endpoint rejects missing or invalid bearer secrets. The review app uses the dedicated Neon review workspace only; its startup connection must find `review_workspace.workspace_sentinel` with `workspace_kind = dedicated_review_workspace` before hosted use.
+Vercel production invokes `GET /api/cron` every five minutes. It requires `CRON_SECRET`: Vercel sends it as a bearer token and the endpoint rejects missing or invalid authorization. Each invocation starts or resumes the current UTC-month cohort and processes one durably leased record, so invocations cannot overlap work. This schedule needs a Vercel Pro or Enterprise project; Vercel does not activate cron for preview deployments. It performs real public-provider requests and writes review candidates only—never a production directory publish or automatic closure. The review app uses the dedicated Neon review workspace only; its startup connection must find `review_workspace.workspace_sentinel` with `workspace_kind = dedicated_review_workspace` before hosted use.
+
+## Production canary and recovery
+
+Before relying on the scheduled cohort, confirm the `/review` readiness checks are green, then run a **one-resource manual canary**. An operator watches its run status and a reviewer checks the resulting candidate or unable-to-verify outcome. Stop scheduled work, cancel the active run, and investigate before continuing when any of these occur: a provider failure, blocked/timeout/rate-limit result for more than 20% of the first 10 checkpoints, an unexpected candidate volume, or an advisory citation/rationale that the reviewer cannot support with captured evidence.
+
+Resume only after the owner documents the cause and validates the fix with another one-resource canary. A cancelled or failed checkpoint is recoverable through the operator controls; never delete an audit record or edit a directory record to clear the queue. Escalate provider outages, workspace/readiness failures, or any suspected policy violation to the service owner.
+
+## Reviewer CBO-eligibility calibration
+
+Before deploying the reviewer eligibility UI, run `npm run apply:reviewer-cbo-eligibility-migration` against the dedicated review workspace. The migration is additive and safe for the prior app; deploy the new app only after it succeeds. Reviewers may optionally label a terminal approval or rejection as CBO eligible or not eligible. Deferred, edited, historical, and unassessed decisions are excluded from agreement counts. Calibration is a prospective quality signal, never an approval, closure, or publishing rule.
 
 ## Seed the current CBO directory
 

@@ -107,6 +107,14 @@ test("Azure export artifacts remain append-only and contain no production creden
   assert.doesNotMatch(schema, /production_database_url/i);
 });
 
+test("reviewer CBO eligibility migration is additive and separately runnable", () => {
+  const schema = migration("008_reviewer_cbo_eligibility.sql");
+  const packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  assert.match(schema, /add column if not exists reviewer_cbo_eligibility boolean/i);
+  assert.match(packageJson, /apply:reviewer-cbo-eligibility-migration/);
+  assert.doesNotMatch(packageJson, /apply:review-migrations[^\n]*008_reviewer_cbo_eligibility/);
+});
+
 test("candidate staging serializes concurrent revisions for one resource", () => {
   const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
   assert.match(repository, /pg_advisory_xact_lock\(hashtextextended\(\$1::text, 0\)\)/);

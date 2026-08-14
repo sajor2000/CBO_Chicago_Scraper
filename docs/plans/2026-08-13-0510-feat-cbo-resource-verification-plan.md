@@ -141,7 +141,7 @@ src/
   lib/                 domain workflow, adapters, scoring, repositories
 migrations/            review-workspace schema migrations
 tests/                 unit, contract, and end-to-end workflow tests
-docs/                  data dictionary, source policy, reviewer/publisher runbooks
+docs/                 ops, policy, data, and delivery plans (see docs/README.md)
 vercel.json            manual/scheduled trigger definition
 ```
 
@@ -173,7 +173,7 @@ vercel.json            manual/scheduled trigger definition
 
 **Dependencies:** None.
 
-**Files:** `package.json`, `tsconfig.json`, `src/lib/db.ts`, `src/lib/domain/`, `migrations/001_review_workspace.sql`, `migrations/002_categories.sql`, `tests/schema-contract.test.ts`, `docs/data-dictionary.md`.
+**Files:** `package.json`, `tsconfig.json`, `src/lib/db.ts`, `src/lib/domain/`, `migrations/001_review_workspace.sql`, `migrations/002_categories.sql`, `tests/schema-contract.test.ts`, `docs/data/data-dictionary.md`.
 
 **Approach:**
 
@@ -200,7 +200,7 @@ vercel.json            manual/scheduled trigger definition
 
 **Dependencies:** U1.
 
-**Files:** `src/lib/retrieval/firecrawl.ts`, `src/lib/retrieval/google-places.ts`, `src/lib/retrieval/local-directory.ts`, `src/lib/retrieval/irs.ts`, `src/lib/retrieval/search-fallback.ts`, `src/lib/verification/`, `src/lib/scoring/`, `tests/retrieval-contract.test.ts`, `tests/verification-workflow.test.ts`, `docs/source-policy.md`.
+**Files:** `src/lib/retrieval/firecrawl.ts`, `src/lib/retrieval/google-places.ts`, `src/lib/retrieval/local-directory.ts`, `src/lib/retrieval/irs.ts`, `src/lib/retrieval/search-fallback.ts`, `src/lib/verification/`, `src/lib/scoring/`, `tests/retrieval-contract.test.ts`, `tests/verification-workflow.test.ts`, `docs/policy/source-policy.md`.
 
 **Approach:**
 
@@ -232,7 +232,7 @@ vercel.json            manual/scheduled trigger definition
 
 **Dependencies:** U1, U2.
 
-**Files:** `src/app/login/`, `src/app/review/page.tsx`, `src/app/review/[candidateId]/page.tsx`, `src/app/api/review/route.ts`, `src/lib/auth.ts`, `src/lib/repositories/review.ts`, `tests/review-authorization.test.ts`, `tests/review-ui-workflow.test.ts`, `docs/reviewer-guide.md`.
+**Files:** `src/app/login/`, `src/app/review/page.tsx`, `src/app/review/[candidateId]/page.tsx`, `src/app/api/review/route.ts`, `src/lib/auth.ts`, `src/lib/repositories/review.ts`, `tests/review-authorization.test.ts`, `tests/review-ui-workflow.test.ts`, `docs/policy/reviewer-guide.md`.
 
 **Approach:**
 
@@ -261,7 +261,7 @@ vercel.json            manual/scheduled trigger definition
 
 **Dependencies:** U1, U2.
 
-**Files:** `src/app/api/runs/route.ts`, `src/app/api/cron/route.ts`, `src/lib/runs/`, `vercel.json`, `tests/run-lifecycle.test.ts`, `docs/operator-runbook.md`.
+**Files:** `src/app/api/runs/route.ts`, `src/app/api/cron/route.ts`, `src/lib/runs/`, `vercel.json`, `tests/run-lifecycle.test.ts`, `docs/ops/operator-runbook.md`.
 
 **Approach:**
 
@@ -321,7 +321,7 @@ vercel.json            manual/scheduled trigger definition
 
 **Dependencies:** U1, U2, U3, U4; U5 only for production publishing controls.
 
-**Files:** `.github/workflows/ci.yml`, `.env.example`, `README.md`, `docs/operations.md`, `docs/security-and-secrets.md`, `tests/dry-run-smoke.test.ts`.
+**Files:** `.github/workflows/ci.yml`, `.env.example`, `README.md`, `docs/ops/operations.md`, `docs/ops/security-and-secrets.md`, `tests/dry-run-smoke.test.ts`.
 
 **Approach:**
 

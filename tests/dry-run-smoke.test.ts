@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -13,4 +13,10 @@ test("fixture dry run yields a report without a publisher or production receipt"
   assert.equal("publicationReceipt" in run, false);
   const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
   assert.equal(existsSync(resolve(root, "src/lib/publisher")), false);
+});
+
+test("the deployment root directs operators to the review workspace", () => {
+  const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
+  const page = readFileSync(resolve(root, "src/app/page.tsx"), "utf8");
+  assert.match(page, /redirect\("\/review"\)/);
 });

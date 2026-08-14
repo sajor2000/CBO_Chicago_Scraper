@@ -7,6 +7,7 @@ export type VerificationStage = (input: {
   beforeValues: Record<string, string>;
   proposedValues: Record<string, string>;
   observations: CapturedObservation[];
+  advisory?: AiAdvisory;
 }) => Promise<unknown>;
 
 export function referenceResourceFromSnapshot(input: { id: string; payload: Record<string, unknown> }): ReferenceResource {
@@ -34,7 +35,8 @@ export async function processVerificationCheckpoint(input: {
       kind: result.state === "conflict" ? "closure_review" : "update",
       beforeValues: Object.fromEntries(result.diffs.map((diff) => [diff.field, diff.before ?? ""])),
       proposedValues: Object.fromEntries(Object.entries(result.proposedValues).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
-      observations: [...result.observations]
+      observations: [...result.observations],
+      advisory: result.advisory
     });
   }
   return { result, report };

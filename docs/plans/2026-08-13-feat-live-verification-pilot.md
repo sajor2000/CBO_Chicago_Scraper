@@ -56,7 +56,7 @@ Deferred: potential-new-resource discovery UI, Firecrawl Interact, IRS/local-dir
 
 **Goal:** Add the smallest Neon repository methods needed to resolve a copied resource, record public-source observations, create/reuse its immutable mirror baseline, and atomically stage a candidate.
 
-**Files:** `src/lib/repositories/review.ts`, `migrations/004_live_verification.sql`, `tests/live-verification.test.ts`.
+**Files:** `src/lib/repositories/review.ts`, `migrations/007_live_verification.sql`, `tests/live-verification.test.ts`.
 
 **Approach:** Use one SQL CTE/transactional statement per staging operation with `pg_advisory_xact_lock(hashtext(run/resource key))`. Create baseline snapshots only from the completed mirror refresh and content-hash the redacted copied payload. Use a deterministic external candidate key based on run/resource/evidence hash. Do not update audit rows.
 
