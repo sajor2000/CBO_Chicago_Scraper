@@ -1,5 +1,6 @@
 export type CandidateStatus = "staged" | "deferred" | "rejected" | "approved" | "publish_pending" | "published" | "publish_failed";
 import type { ReviewDecision } from "../domain/review-workspace.ts";
+import type { AiAdvisory } from "../verification/index.ts";
 import { assertReviewWorkspace, requireWorkspaceRole, reviewWorkspaceDb } from "../db.ts";
 import { redactEvidence } from "../evidence/redaction.ts";
 
@@ -362,11 +363,13 @@ export class NeonReviewRepository {
     beforeValues: FieldValues;
     proposedValues: FieldValues;
     observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: unknown }>;
+    advisory?: AiAdvisory;
   }): Promise<ReviewCandidate> {
     const observations = input.observations.map(({ excerpt, ...observation }) => ({ ...observation, excerpt: excerpt && redactEvidence(excerpt).slice(0, 6000) }));
     const provenance = {
       evidence: observations.map((observation) => observation.sourceUrl ?? `${observation.provider}: ${observation.state}`),
-      observations
+      observations,
+      advisory: input.advisory
     };
     const rows = await this.#query<{ id: string }>(`
       with locked as (

@@ -1,11 +1,39 @@
-import { authorizeCron } from "../../../lib/runs/cron.ts";
+import { reviewRepository } from "../../../lib/repositories/review.ts";
+import { authorizeCron, CronAuthorizationError } from "../../../lib/runs/cron.ts";
+import { executeCheckpoint, type CheckpointResult } from "../../../lib/runs/execute-checkpoint.ts";
+import { runRegistry, RunLockError } from "../../../lib/runs/index.ts";
 
-/** Scheduling remains disabled in vercel.json until a manual dry run is accepted. */
-export async function GET(request: Request): Promise<Response> {
+/** One hosted evidence checkpoint can take multiple provider round-trips. */
+export const maxDuration = 60;
+
+type CronDependencies = {
+  authorize: (token: string | null) => void;
+  assertBaselineReady: () => Promise<void>;
+  launchScheduled: () => Promise<{ id: string }>;
+  executeCheckpoint: (runId: string) => Promise<CheckpointResult>;
+};
+
+const productionDependencies: CronDependencies = {
+  authorize: authorizeCron,
+  assertBaselineReady: () => reviewRepository.assertBaselineReady(),
+  launchScheduled: () => runRegistry.launchScheduled(),
+  executeCheckpoint
+};
+
+/** Vercel invokes one authenticated checkpoint; Neon leases prevent overlap. */
+export async function executeScheduledCron(request: Request, dependencies: CronDependencies = productionDependencies): Promise<Response> {
   try {
-    authorizeCron(request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null);
-    return Response.json({ scheduled: false, message: "Cron endpoint authorized; scheduled execution is not enabled." });
+    dependencies.authorize(request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null);
+    await dependencies.assertBaselineReady();
+    const run = await dependencies.launchScheduled();
+    return Response.json({ scheduled: true, runId: run.id, ...(await dependencies.executeCheckpoint(run.id)) });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Cron authorization failed." }, { status: 401 });
+    if (error instanceof RunLockError) return Response.json({ scheduled: true, skipped: true, message: "A checkpoint is already leased." }, { status: 202 });
+    const status = error instanceof CronAuthorizationError ? 401 : 500;
+    return Response.json({ error: status === 401 ? "Cron authorization failed." : "Scheduled checkpoint failed." }, { status });
   }
+}
+
+export async function GET(request: Request): Promise<Response> {
+  return executeScheduledCron(request);
 }

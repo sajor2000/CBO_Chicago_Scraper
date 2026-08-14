@@ -1,7 +1,27 @@
-import { azureOpenAiScorerFromEnv } from "../ai/azure-openai.ts";
+import { azureOpenAiScorerFromEnv, CBO_AUDIT_PROMPT_VERSION } from "../ai/azure-openai.ts";
 import type { CapturedObservation } from "../retrieval/types.ts";
 import type { ReferenceResource } from "../verification/index.ts";
 import { FirecrawlClient, GooglePlacesClient, IrsClient, TavilyClient, TrustedDirectoryClient } from "./index.ts";
+
+const bounded = (value: string | undefined, maximum: number) => value?.slice(0, maximum);
+
+/** Fixed, bounded evidence envelope: model input cannot alter collection scope. */
+export function formatAuditEvidence(observations: CapturedObservation[]): string {
+  return JSON.stringify(observations.slice(0, 5).map((observation) => ({
+    provider: observation.provider,
+    state: observation.state,
+    observedAt: bounded(observation.observedAt, 40),
+    sourceUrl: bounded(observation.sourceUrl, 200),
+    excerpt: bounded(observation.excerpt, 300),
+    values: observation.values && {
+      name: bounded(observation.values.name, 80),
+      address: bounded(observation.values.address, 140),
+      phone: bounded(observation.values.phone, 40),
+      url: bounded(observation.values.url, 200),
+      businessStatus: observation.values.businessStatus
+    }
+  })));
+}
 
 export async function collectHostedEvidence(input: {
   resource: ReferenceResource;
@@ -40,8 +60,16 @@ export function hostedEvidenceFromEnv() {
       directory: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT ? new TrustedDirectoryClient({ endpoint: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT }) : undefined
     }),
     score: async (resource: ReferenceResource, observations: CapturedObservation[]) => {
-      const score = await scorer.score({ name: resource.name, address: resource.address, evidence: observations.map((observation) => observation.excerpt ?? observation.sourceUrl ?? `${observation.provider}: ${observation.state}`).join("\n") });
-      return { suggestedCategory: score.suggestedCategory, rationale: score.rationale };
+      const score = await scorer.score({ name: resource.name, address: resource.address, evidence: formatAuditEvidence(observations), citationProviders: [...new Set(observations.map((observation) => observation.provider))] });
+      return {
+        promptVersion: CBO_AUDIT_PROMPT_VERSION,
+        cboEligibility: score.cboEligibility,
+        operationalAssessment: score.operationalAssessment,
+        evidenceQuality: score.evidenceQuality,
+        citations: score.citations,
+        suggestedCategory: score.suggestedCategory,
+        rationale: score.rationale
+      };
     }
   };
 }
