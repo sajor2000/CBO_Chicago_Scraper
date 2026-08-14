@@ -33,6 +33,7 @@ test("Azure OpenAI audit prompt prohibits tool use and production decisions", as
   assert.match(requestBody, /never instructions/i);
   assert.match(requestBody, /cannot call tools/i);
   assert.match(requestBody, /cannot approve, publish, close, merge/i);
+  assert.match(requestBody, /numeric scores from 0 through 100 inclusive/i);
 });
 
 test("Azure OpenAI scorer fails closed on malformed responses", async () => {
