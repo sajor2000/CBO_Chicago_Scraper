@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { InMemoryReviewRepository, RevisionConflictError } from "../src/lib/repositories/review.ts";
+import { InMemoryReviewRepository, RevisionConflictError, reviewProvenance } from "../src/lib/repositories/review.ts";
 import { readFileSync } from "node:fs";
 
 test("approval stores a field subset and stale decisions fail compare-and-swap", () => {
@@ -49,4 +49,14 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   const status = readFileSync(new URL("../src/app/review/run-status.tsx", import.meta.url), "utf8");
   assert.match(status, /Recent verification runs/);
   assert.match(status, /providerFailures/);
+});
+
+test("review provenance exposes only redacted, structured advisory evidence", () => {
+  const provenance = reviewProvenance({ observations: [{ provider: "official", state: "found", observedAt: "2026-08-13T00:00:00Z", excerpt: "api_key=secret", values: { phone: "555-1212", ignored: 3 } }], advisory: { cboEligibility: "likely_cbo", citations: ["official"] } });
+  assert.equal(provenance.observations[0]?.excerpt, "api_key=[redacted]");
+  assert.deepEqual(provenance.observations[0]?.values, { phone: "555-1212" });
+  assert.equal(provenance.advisory?.cboEligibility, "likely_cbo");
+  assert.deepEqual(provenance.advisory?.citations, ["official"]);
+  const detail = readFileSync(new URL("../src/app/review/[candidateId]/page.tsx", import.meta.url), "utf8");
+  assert.match(detail, /ReviewProvenanceCard/);
 });
