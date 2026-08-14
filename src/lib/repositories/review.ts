@@ -1,6 +1,7 @@
 export type CandidateStatus = "staged" | "deferred" | "rejected" | "approved" | "publish_pending" | "published" | "publish_failed";
 import type { ReviewDecision } from "../domain/review-workspace.ts";
 import type { AiAdvisory } from "../verification/index.ts";
+import { summarizeCalibration, type CalibrationSummary } from "../verification/calibration.ts";
 import { assertReviewWorkspace, requireWorkspaceRole, reviewWorkspaceDb } from "../db.ts";
 import { redactEvidence } from "../evidence/redaction.ts";
 
@@ -339,6 +340,19 @@ export class NeonReviewRepository {
       limit $1
     `, [Math.max(1, Math.min(limit, 100))]);
     return rows.map((row) => ({ id: row.id, name: row.name }));
+  }
+
+  async calibrationSummary(): Promise<CalibrationSummary[]> {
+    const rows = await this.#query<{ promptVersion: string | null; cboEligibility: AiAdvisory["cboEligibility"] | null; decision: "approved" | "rejected" | "deferred" }>(`
+      select revision.provenance->'advisory'->>'promptVersion' as "promptVersion",
+        revision.provenance->'advisory'->>'cboEligibility' as "cboEligibility",
+        case state.status when 'approved_for_future_export' then 'approved' else state.status end as decision
+      from review_workspace.candidate_current_state state
+      join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
+      where state.status in ('approved_for_future_export', 'rejected', 'deferred')
+        and revision.provenance ? 'advisory'
+    `);
+    return summarizeCalibration(rows.flatMap((row) => row.promptVersion ? [{ promptVersion: row.promptVersion, cboEligibility: row.cboEligibility ?? undefined, decision: row.decision }] : []));
   }
 
   async assertBaselineReady(): Promise<void> {

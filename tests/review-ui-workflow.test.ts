@@ -49,6 +49,7 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   const status = readFileSync(new URL("../src/app/review/run-status.tsx", import.meta.url), "utf8");
   assert.match(status, /Recent verification runs/);
   assert.match(status, /providerFailures/);
+  assert.match(page, /CalibrationSummary/);
 });
 
 test("review provenance exposes only redacted, structured advisory evidence", () => {

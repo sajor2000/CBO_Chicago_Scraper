@@ -6,6 +6,7 @@ import { runRegistry } from "../../lib/runs/index.ts";
 import { verificationReadiness } from "../../lib/verification/readiness.ts";
 import { RunControls } from "./run-controls.tsx";
 import { RunStatus } from "./run-status.tsx";
+import { CalibrationSummary } from "./calibration-summary.tsx";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 const statusLabel = (status: string) => status.replace(/_/g, " ");
@@ -63,12 +64,14 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   const candidates = isReviewer ? await reviewRepository.list({ status: text("status") as "staged" | "deferred" | "rejected" | "approved" | undefined, kind: text("kind") as "update" | "closure_review" | "new_resource" | undefined, evidenceQuality: text("evidenceQuality") as "high" | "medium" | "low" | undefined }) : [];
   let resources: Array<{ id: string; name: string }> = [];
   let runs: Awaited<ReturnType<typeof runRegistry.listRecent>> = [];
+  let calibration: Awaited<ReturnType<typeof reviewRepository.calibrationSummary>> = [];
   let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
   if (isOperator) {
     readiness = await verificationReadiness();
     if (readiness.ready) {
       resources = await reviewRepository.listSeededResources(100);
       runs = await runRegistry.listRecent();
+      calibration = await reviewRepository.calibrationSummary();
     }
   }
 
@@ -94,6 +97,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
     )}
 
     {isOperator && <RunStatus runs={runs} />}
+    {isOperator && <CalibrationSummary summaries={calibration} />}
 
     {isReviewer ? (
       <section className="queue-panel" aria-labelledby="queue-title">
