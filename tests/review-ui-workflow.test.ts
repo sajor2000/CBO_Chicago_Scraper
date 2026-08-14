@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { InMemoryReviewRepository, RevisionConflictError, reviewProvenance } from "../src/lib/repositories/review.ts";
 import { readFileSync } from "node:fs";
+import { postReview } from "../src/lib/review/post-review.ts";
 
 test("approval stores a field subset and stale decisions fail compare-and-swap", () => {
   const reviews = new InMemoryReviewRepository();
@@ -19,8 +20,22 @@ test("CBO eligibility is an explicit terminal review label", () => {
   const deferred = new InMemoryReviewRepository();
   deferred.stage({ id: "defer", proposedValues: { address: "2 New St" } });
   assert.throws(() => deferred.decide({ candidateId: "defer", expectedRevision: 1, reviewerSubject: "reviewer-1", action: "deferred", reason: "Need more evidence.", reviewerCboEligibility: true }));
-  const route = readFileSync(new URL("../src/app/api/review/route.ts", import.meta.url), "utf8");
-  assert.match(route, /body\.action !== "approved" && body\.action !== "rejected"/);
+});
+
+test("route rejects nonterminal eligibility labels before review mutation", async () => {
+  const request = (action: "edit" | "deferred") => new Request("https://example.test/api/review", { method: "POST", body: JSON.stringify({ candidateId: "candidate", expectedRevision: 1, action, proposedValues: { address: "2 New St" }, reason: "test", reviewerCboEligibility: true }) });
+  const dependencies = {
+    auth: async () => ({ userId: "reviewer-1" }),
+    requireWorkspaceRole: async () => undefined,
+    supersede: async () => assert.fail("supersede must not run"),
+    decide: async () => assert.fail("decide must not run"),
+    errorStatus: () => 400
+  };
+  for (const action of ["edit", "deferred"] as const) {
+    const response = await postReview(request(action), dependencies);
+    assert.equal(response.status, 400);
+    assert.match((await response.json() as { error: string }).error, /only accompany approval or rejection/i);
+  }
 });
 
 test("a superseding edit invalidates prior approval and retains the audit history", () => {
