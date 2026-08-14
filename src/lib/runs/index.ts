@@ -281,7 +281,7 @@ export class NeonRunRegistry {
       ), inserted_run as (
         insert into review_workspace.verification_runs (idempotency_key, trigger_kind, run_mode, cycle_id, run_parameters)
         select $1, $7, $6, case when $6 in ('manual_full_cycle', 'scheduled_cycle') then (select id from selected_cycle) else null end,
-          jsonb_build_object('selection', $2::jsonb, 'budget', $3)
+          jsonb_build_object('selection', $2::jsonb, 'budget', $3::integer)
         where $6 not in ('manual_full_cycle', 'scheduled_cycle') or exists (select 1 from selected_cycle)
         on conflict (idempotency_key) do nothing
         returning id
