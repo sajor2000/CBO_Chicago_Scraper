@@ -63,6 +63,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   const text = (key: string) => typeof filters[key] === "string" ? filters[key] : undefined;
   const candidates = isReviewer ? await reviewRepository.list({ status: text("status") as "staged" | "deferred" | "rejected" | "approved" | undefined, kind: text("kind") as "update" | "closure_review" | "new_resource" | undefined, evidenceQuality: text("evidenceQuality") as "high" | "medium" | "low" | undefined }) : [];
   let resources: Array<{ id: string; name: string }> = [];
+  let seededResourceCount = 0;
   let runs: Awaited<ReturnType<typeof runRegistry.listRecent>> = [];
   let calibration: Awaited<ReturnType<typeof reviewRepository.calibrationSummary>> = [];
   let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
@@ -70,6 +71,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
     readiness = await verificationReadiness();
     if (readiness.ready) {
       resources = await reviewRepository.listSeededResources(100);
+      seededResourceCount = await reviewRepository.seededResourceCount();
       runs = await runRegistry.listRecent();
       calibration = await reviewRepository.calibrationSummary();
     }
@@ -93,7 +95,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
           <p className="pilot-empty">Verification is blocked until all readiness checks pass.</p>
           <ul className="readiness-list">{readiness?.checks.filter((check) => !check.ready).map((check) => <li key={check.name}><strong>{check.name}:</strong> {check.message}</li>)}</ul>
         </section>
-        : <RunControls resources={resources} />
+        : <RunControls resources={resources} seededResourceCount={seededResourceCount} />
     )}
 
     {isOperator && <RunStatus runs={runs} />}

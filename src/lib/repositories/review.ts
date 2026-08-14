@@ -344,6 +344,15 @@ export class NeonReviewRepository {
     return rows.map((row) => ({ id: row.id, name: row.name }));
   }
 
+  async seededResourceCount(): Promise<number> {
+    const rows = await this.#query<{ count: string }>(`
+      select count(*)::text as count
+      from review_workspace.resources resource
+      where exists (select 1 from review_workspace.resource_snapshots snapshot where snapshot.resource_id = resource.id)
+    `);
+    return Number(rows[0]?.count ?? 0);
+  }
+
   async calibrationSummary(): Promise<CalibrationSummary[]> {
     const rows = await this.#query<{ promptVersion: string | null; cboEligibility: AiAdvisory["cboEligibility"] | null; decision: "approved" | "rejected"; reviewerCboEligibility: boolean | null }>(`
       select revision.provenance->'advisory'->>'promptVersion' as "promptVersion",

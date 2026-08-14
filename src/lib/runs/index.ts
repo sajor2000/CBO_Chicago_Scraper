@@ -149,7 +149,23 @@ export class NeonRunRegistry {
   }
 
   async launch(input: { idempotencyKey: string; selection: string[]; budget: number }): Promise<VerificationRun> {
-    return this.#launch({ ...input, triggerKind: "manual", maximumSelection: 100 });
+    return this.#launch({ ...input, triggerKind: "manual", maximumSelection: 100, scope: "selected" });
+  }
+
+  /** Queues every seeded record; a worker still leases and processes one record at a time. */
+  async launchAll(idempotencyKey: string): Promise<VerificationRun> {
+    const active = await this.#query<{ id: string }>(`
+      select run.id
+      from review_workspace.verification_runs run
+      join review_workspace.run_current_state state on state.run_id = run.id
+      where run.trigger_kind = 'manual'
+        and run.run_parameters->>'scope' = 'all'
+        and state.status in ('queued', 'running')
+      order by run.started_at asc limit 1
+    `);
+    if (active[0]?.id) return (await this.get(active[0].id))!;
+    const resources = await this.#seededResourceIds();
+    return this.#launch({ idempotencyKey, selection: resources, budget: resources.length, triggerKind: "manual", maximumSelection: 10_000, scope: "all" });
   }
 
   /** Starts or resumes the current UTC-month cohort over every seeded resource. */
@@ -163,16 +179,11 @@ export class NeonRunRegistry {
       order by run.started_at asc limit 1
     `);
     if (active[0]?.id) return (await this.get(active[0].id))!;
-    const resources = await this.#query<{ id: string }>(`
-      select resource.id
-      from review_workspace.resources resource
-      where exists (select 1 from review_workspace.resource_snapshots snapshot where snapshot.resource_id = resource.id)
-      order by resource.id
-    `);
-    return this.#launch({ idempotencyKey: key, selection: resources.map((resource) => resource.id), budget: resources.length, triggerKind: "scheduled", maximumSelection: 10_000 });
+    const resources = await this.#seededResourceIds();
+    return this.#launch({ idempotencyKey: key, selection: resources, budget: resources.length, triggerKind: "scheduled", maximumSelection: 10_000, scope: "all" });
   }
 
-  async #launch(input: { idempotencyKey: string; selection: string[]; budget: number; triggerKind: "manual" | "scheduled"; maximumSelection: number }): Promise<VerificationRun> {
+  async #launch(input: { idempotencyKey: string; selection: string[]; budget: number; triggerKind: "manual" | "scheduled"; maximumSelection: number; scope: "selected" | "all" }): Promise<VerificationRun> {
     const selection = [...new Set(input.selection)];
     if (!input.idempotencyKey || !selection.length || input.budget < 1 || input.budget > selection.length || selection.length > input.maximumSelection) {
       throw new Error(`A positive budget, idempotency key, and at most ${input.maximumSelection} selected resources are required.`);
@@ -181,7 +192,7 @@ export class NeonRunRegistry {
     const rows = await this.#query<{ id: string }>(`
       with inserted_run as (
         insert into review_workspace.verification_runs (idempotency_key, trigger_kind, run_parameters)
-        values ($1, $6, jsonb_build_object('selection', $2::jsonb, 'budget', $3))
+        values ($1, $6, jsonb_build_object('selection', $2::jsonb, 'budget', $3, 'scope', $7))
         on conflict (idempotency_key) do nothing
         returning id
       ), inserted_state as (
@@ -200,7 +211,7 @@ export class NeonRunRegistry {
       union all
       select id from review_workspace.verification_runs where idempotency_key = $1
       limit 1
-    `, [input.idempotencyKey, JSON.stringify(selection), input.budget, JSON.stringify(blankReport()), selection, input.triggerKind]);
+    `, [input.idempotencyKey, JSON.stringify(selection), input.budget, JSON.stringify(blankReport()), selection, input.triggerKind, input.scope]);
     const runId = rows[0]?.id ?? (await this.#query<{ id: string }>(
       "select id from review_workspace.verification_runs where idempotency_key = $1",
       [input.idempotencyKey]
@@ -349,6 +360,16 @@ export class NeonRunRegistry {
     const sql = this.#sql();
     await assertReviewWorkspace(sql);
     return await sql.query(query, params) as T[];
+  }
+
+  async #seededResourceIds(): Promise<string[]> {
+    const resources = await this.#query<{ id: string }>(`
+      select resource.id
+      from review_workspace.resources resource
+      where exists (select 1 from review_workspace.resource_snapshots snapshot where snapshot.resource_id = resource.id)
+      order by resource.id
+    `);
+    return resources.map((resource) => resource.id);
   }
 }
 

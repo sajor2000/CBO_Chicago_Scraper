@@ -7,6 +7,13 @@ import {
   sourceProfileConfigFromEnv
 } from "../src/lib/imports/cbo-source-profile.ts";
 
+test("normalized WIC rows always use the wic location type", () => {
+  const sql = readFileSync(new URL("../sql/source/cbo_public_directory_v1.sql", import.meta.url), "utf8");
+
+  assert.match(sql, /'wic'::text as location_type/);
+  assert.doesNotMatch(sql, /wic\.location_type/);
+});
+
 const config = {
   databaseUrl: "postgres://private-source",
   table: "public.resources",

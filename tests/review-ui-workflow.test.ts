@@ -35,9 +35,11 @@ test("a superseding edit invalidates prior approval and retains the audit histor
 test("operator controls prevent a second launch while a pilot request is in flight", () => {
   const controls = readFileSync(new URL("../src/app/review/run-controls.tsx", import.meta.url), "utf8");
   assert.match(controls, /const \[busy, setBusy\] = useState\(false\)/);
-  assert.match(controls, /disabled=\{!selected\.length \|\| busy\}/);
+  assert.match(controls, /disabled=\{!selected\.length \|\| busy \|\| activeRunMode === "all"\}/);
   assert.match(controls, /body: JSON\.stringify\(\{ limit: 1 \}\)/);
   assert.match(controls, /Cancel run/);
+  assert.match(controls, /Queue all \$\{seededResourceCount\} records/);
+  assert.match(controls, /mode: "all"/);
   assert.match(controls, /window\.location\.assign\("\/review"\)/);
 });
 
@@ -45,6 +47,17 @@ test("operator controls preserve an unfinished run for recovery instead of relau
   const controls = readFileSync(new URL("../src/app/review/run-controls.tsx", import.meta.url), "utf8");
   assert.match(controls, /sessionStorage/);
   assert.match(controls, /action: "resume"/);
+});
+
+test("full-directory review is a guarded durable queue, not a browser loop", () => {
+  const controls = readFileSync(new URL("../src/app/review/run-controls.tsx", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../src/app/api/runs/route.ts", import.meta.url), "utf8");
+  const runs = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
+  assert.match(controls, /Confirm queue all \$\{seededResourceCount\}/);
+  assert.match(route, /body\.mode === "all"/);
+  assert.match(route, /runRegistry\.launchAll/);
+  assert.match(runs, /async launchAll\(idempotencyKey: string\)/);
+  assert.match(runs, /run\.run_parameters->>'scope' = 'all'/);
 });
 
 test("review queue mounts operator controls and human-readable candidate rows", () => {
@@ -56,6 +69,7 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   assert.match(page, /verificationReadiness/);
   assert.match(page, /readiness-list/);
   assert.match(page, /RunStatus/);
+  assert.match(page, /seededResourceCount/);
   const status = readFileSync(new URL("../src/app/review/run-status.tsx", import.meta.url), "utf8");
   assert.match(status, /Recent verification runs/);
   assert.match(status, /providerFailures/);
