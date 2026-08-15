@@ -161,10 +161,22 @@ test("recurring migration runner blocks ambiguous 004 ledger history without rep
   assert.match(runner, /004_baseline_imports\.sql/);
   assert.match(runner, /schema_migrations/);
   assert.match(runner, /preflight/i);
-  assert.match(runner, /fileURLToPath\(recurringPath\)/);
+  assert.match(runner, /migrations\.flatMap\(\(path\) => \["-f", fileURLToPath\(path\)\]\)/);
   assert.doesNotMatch(runner, /delete from review_workspace\.schema_migrations/i);
   assert.doesNotMatch(runner, /update review_workspace\.schema_migrations/i);
   assert.match(packageJson, /apply:recurring-verification-migration/);
+});
+
+test("mirror-copy groundwork fences idempotent refresh requests before table-copy DDL", () => {
+  const schema = migration("010_cbo_mirror_copy.sql");
+  const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
+  assert.match(schema, /create extension if not exists postgis/i);
+  assert.match(schema, /create table if not exists review_workspace\.refresh_requests/i);
+  assert.match(schema, /idempotency_key text not null unique/i);
+  assert.match(schema, /manifest_id uuid unique references review_workspace\.refresh_manifests/i);
+  assert.match(schema, /before delete on review_workspace\.refresh_requests/i);
+  assert.match(runner, /010_cbo_mirror_copy\.sql/);
+  assert.match(runner, /version in \(4, 9, 10\)/);
 });
 
 test("candidate staging binds the checkpoint membership snapshot instead of latest", () => {
