@@ -25,12 +25,14 @@ test("execute route processes one checkpoint, sets maxDuration, and records fail
 test("execution bounds provider work and passes its lease to candidate staging", () => {
   const route = readFileSync(new URL("../src/app/api/runs/[runId]/execute/route.ts", import.meta.url), "utf8");
   const worker = readFileSync(new URL("../src/lib/runs/execute-checkpoint.ts", import.meta.url), "utf8");
+  const runs = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
   const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
   assert.match(worker, /within\(hostedEvidence\.collect\(resource\), 30_000/);
   assert.match(worker, /within\(hostedEvidence\.score\(resource, observations\), 25_000/);
   assert.match(worker, /if \(!advisory\) output\.report\.providerFailures/);
   assert.match(worker, /leaseToken: claim\.leaseToken/);
   assert.match(worker, /seededResource\(claim\.resourceId, claim\.snapshotId\)/);
+  assert.match(runs, /select claimed\.resource_id, membership\.resource_snapshot_id, claimed\.ordinal, claimed\.lease_token, claimed\.attempt/);
   assert.match(repository, /active_checkpoint/);
   assert.match(repository, /checkpoint\.lease_token = \$8::uuid/);
   assert.match(repository, /state\.status = 'running'/);

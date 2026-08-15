@@ -471,7 +471,7 @@ export class NeonRunRegistry {
         from review_workspace.verification_runs run
         where run.id in (select run_id from started) and cycle.id = run.cycle_id and cycle.status <> 'running'
       )
-      select claimed.resource_id, membership.resource_snapshot_id, claimed.ordinal, claimed.lease_token
+      select claimed.resource_id, membership.resource_snapshot_id, claimed.ordinal, claimed.lease_token, claimed.attempt
       from claimed left join review_workspace.cycle_memberships membership on membership.id = claimed.cycle_membership_id
     `, [runId]);
     if (!rows[0]) {
