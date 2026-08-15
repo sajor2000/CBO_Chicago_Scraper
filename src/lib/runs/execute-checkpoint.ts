@@ -114,6 +114,24 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     };
   } catch (error) {
     if (leaseToken) {
+      if (attempt >= 3) {
+        try {
+          await runRegistry.completeCheckpoint(runId, leaseToken, { unableToVerify: 1 }, "unable_to_verify", {
+            resourceName: resourceName ?? "Selected resource",
+            verificationState: "unable_to_verify",
+            reasons: ["Verification could not complete after three attempts; this resource needs human follow-up."],
+            providerIssues: ["execution:retry_exhausted"],
+            evidence: { observations: [] }
+          });
+          const runStatus = await runRegistry.status(runId);
+          return {
+            recordsChecked: 1, candidatesStaged: 0, conflicts: 0, unableToVerify: 1, providerFailures: 0, budgetUsed: 1,
+            state: "unable_to_verify", reasons: ["Verification could not complete after three attempts; this resource needs human follow-up."],
+            providerIssues: ["execution:retry_exhausted"], resourceId, resourceName,
+            done: runStatus === "completed" || runStatus === "cancelled", runStatus
+          };
+        } catch { /* release below so a persistence failure remains retryable */ }
+      }
       try { await runRegistry.releaseLease(runId, leaseToken); } catch { /* preserve the original execution error */ }
     }
     throw error;
