@@ -59,6 +59,7 @@ export class InMemoryRunRegistry {
   #runs = new Map<string, VerificationRun>();
   #byIdempotency = new Map<string, string>();
   #claims = new Map<string, string>();
+  #attempts = new Map<string, number>();
   #nextDue = new Map<string, string>();
   #nextId = 1;
 
@@ -85,7 +86,7 @@ export class InMemoryRunRegistry {
     return run && copy(run);
   }
 
-  claimNext(runId: string): { resourceId: string; snapshotId?: string; checkpoint: number; leaseToken: string } | undefined {
+  claimNext(runId: string): { resourceId: string; snapshotId?: string; checkpoint: number; leaseToken: string; attempt: number } | undefined {
     const run = this.#require(runId);
     if (["paused", "cancelled", "completed", "failed"].includes(run.status)) return undefined;
     if (this.#claims.has(run.id)) throw new RunLockError();
@@ -99,8 +100,11 @@ export class InMemoryRunRegistry {
     }
     run.status = "running";
     const leaseToken = `lease-${run.id}-${run.checkpoint}-${run.report.budgetUsed}`;
+    const attemptKey = `${run.id}:${run.checkpoint}`;
+    const attempt = (this.#attempts.get(attemptKey) ?? 0) + 1;
+    this.#attempts.set(attemptKey, attempt);
     this.#claims.set(run.id, leaseToken);
-    return { resourceId: run.selection[run.checkpoint]!, snapshotId: run.memberships[run.checkpoint]?.snapshotId || undefined, checkpoint: run.checkpoint, leaseToken };
+    return { resourceId: run.selection[run.checkpoint]!, snapshotId: run.memberships[run.checkpoint]?.snapshotId || undefined, checkpoint: run.checkpoint, leaseToken, attempt };
   }
 
   completeCheckpoint(runId: string, leaseToken: string, report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">>, outcome: CheckpointOutcome, now = new Date()) {
@@ -429,8 +433,8 @@ export class NeonRunRegistry {
     return rows[0]?.status;
   }
 
-  async claimNext(runId: string): Promise<{ resourceId: string; snapshotId?: string; checkpoint: number; leaseToken: string } | undefined> {
-    const rows = await this.#query<{ resource_id: string; resource_snapshot_id: string | null; ordinal: number; lease_token: string }>(`
+  async claimNext(runId: string): Promise<{ resourceId: string; snapshotId?: string; checkpoint: number; leaseToken: string; attempt: number } | undefined> {
+    const rows = await this.#query<{ resource_id: string; resource_snapshot_id: string | null; ordinal: number; lease_token: string; attempt: number }>(`
       with terminal_state as (
         update review_workspace.run_current_state state
         set status = case
@@ -455,7 +459,7 @@ export class NeonRunRegistry {
           and checkpoint.ordinal = state.next_checkpoint_ordinal
           and (checkpoint.state = 'pending' or (checkpoint.state = 'leased' and checkpoint.lease_expires_at <= now()))
           and not exists (select 1 from terminal_state)
-        returning checkpoint.resource_id, checkpoint.cycle_membership_id, checkpoint.ordinal, checkpoint.lease_token
+        returning checkpoint.resource_id, checkpoint.cycle_membership_id, checkpoint.ordinal, checkpoint.lease_token, checkpoint.attempt
       ), started as (
         update review_workspace.run_current_state state
         set status = 'running', updated_at = now(), revision = revision + 1
@@ -467,7 +471,7 @@ export class NeonRunRegistry {
         from review_workspace.verification_runs run
         where run.id in (select run_id from started) and cycle.id = run.cycle_id and cycle.status <> 'running'
       )
-      select claimed.resource_id, membership.resource_snapshot_id, claimed.ordinal, claimed.lease_token
+      select claimed.resource_id, membership.resource_snapshot_id, claimed.ordinal, claimed.lease_token, claimed.attempt
       from claimed left join review_workspace.cycle_memberships membership on membership.id = claimed.cycle_membership_id
     `, [runId]);
     if (!rows[0]) {
@@ -475,7 +479,7 @@ export class NeonRunRegistry {
       if (!run || run.status === "cancelled" || run.status === "completed") return undefined;
       throw new RunLockError();
     }
-    return { resourceId: rows[0].resource_id, snapshotId: rows[0].resource_snapshot_id ?? undefined, checkpoint: Number(rows[0].ordinal), leaseToken: rows[0].lease_token };
+    return { resourceId: rows[0].resource_id, snapshotId: rows[0].resource_snapshot_id ?? undefined, checkpoint: Number(rows[0].ordinal), leaseToken: rows[0].lease_token, attempt: Number(rows[0].attempt) };
   }
 
   async completeCheckpoint(runId: string, leaseToken: string, report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">>, outcome: CheckpointOutcome, siteReport?: SiteReportPayload): Promise<void> {
@@ -534,7 +538,7 @@ export class NeonRunRegistry {
           select 1 from review_workspace.verification_runs run
           where run.id = state.run_id and run.cycle_id is not null
         ) or exists (select 1 from failed_cycle))
-      returning state.run_id
+        returning state.run_id
     `, [runId, leaseToken]);
     if (!rows[0]) throw new RunLockError();
   }

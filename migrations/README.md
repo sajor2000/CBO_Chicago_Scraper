@@ -13,5 +13,6 @@ Apply with `npm run apply:review-migrations` (requires `REVIEW_DATABASE_URL`).
 | `007_live_verification.sql` | no | Mirror refresh / resource link tables for live verification; apply explicitly when ready |
 | `008_reviewer_cbo_eligibility.sql` | no | Additive reviewer-decision label; apply with `npm run apply:reviewer-cbo-eligibility-migration` |
 | `009_recurring_verification.sql` | no | Frozen 60-day cycle state; apply with `npm run apply:recurring-verification-migration` after the migration-ledger preflight passes |
+| `010_cbo_mirror_copy.sql` | no | PostGIS and fenced refresh-request groundwork; the same controlled runner applies it after `009` |
 
 Do not reuse sequence numbers. Older plans that mention `004_live_verification.sql` now mean `007_live_verification.sql`.

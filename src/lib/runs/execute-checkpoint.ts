@@ -40,6 +40,9 @@ export function providerIssuesFor(observations: CapturedObservation[], advisoryE
 /** Executes one leased checkpoint; callers own authorization and HTTP response mapping. */
 export async function executeCheckpoint(runId: string): Promise<CheckpointResult> {
   let leaseToken: string | undefined;
+  let resourceId: string | undefined;
+  let resourceName: string | undefined;
+  let attempt = 0;
   try {
     const claim = await runRegistry.claimNext(runId);
     if (!claim) {
@@ -50,11 +53,33 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
       return { message, done: true, ...blankStep(), runStatus: run?.status };
     }
     leaseToken = claim.leaseToken;
+    resourceId = claim.resourceId;
+    attempt = claim.attempt;
     const hostedEvidence = hostedEvidenceFromEnv();
     const seeded = await reviewRepository.seededResource(claim.resourceId, claim.snapshotId);
     if (!seeded) throw new Error("Selected resource has no seeded public snapshot.");
     const resource = referenceResourceFromSnapshot(seeded);
-    const observations = await within(hostedEvidence.collect(resource), 30_000, "Evidence collection");
+    resourceName = resource.name;
+    let observations: CapturedObservation[];
+    try {
+      observations = await within(hostedEvidence.collect(resource), 30_000, "Evidence collection");
+    } catch {
+      await runRegistry.completeCheckpoint(runId, claim.leaseToken, { providerFailures: 1 }, "provider_failure", {
+        resourceName,
+        verificationState: "provider_failure",
+        reasons: ["Evidence collection could not complete; this resource needs a later retry."],
+        providerIssues: ["evidence_collection:failed"],
+        evidence: { observations: [] }
+      });
+      leaseToken = undefined;
+      const runStatus = await runRegistry.status(runId);
+      return {
+        recordsChecked: 1, candidatesStaged: 0, conflicts: 0, unableToVerify: 0, providerFailures: 1, budgetUsed: 1,
+        state: "provider_failure", reasons: ["Evidence collection could not complete; this resource needs a later retry."],
+        providerIssues: ["evidence_collection:failed"], resourceId, resourceName,
+        done: runStatus === "completed" || runStatus === "cancelled", runStatus
+      };
+    }
     let advisoryError: unknown;
     const advisory = await within(hostedEvidence.score(resource, observations), 25_000, "Evidence scoring").catch((error) => {
       advisoryError = error;
@@ -89,7 +114,25 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     };
   } catch (error) {
     if (leaseToken) {
-      try { await runRegistry.failCheckpoint(runId, leaseToken); } catch { /* preserve the original execution error */ }
+      if (attempt >= 3) {
+        try {
+          await runRegistry.completeCheckpoint(runId, leaseToken, { unableToVerify: 1 }, "unable_to_verify", {
+            resourceName: resourceName ?? "Selected resource",
+            verificationState: "unable_to_verify",
+            reasons: ["Verification could not complete after three attempts; this resource needs human follow-up."],
+            providerIssues: ["execution:retry_exhausted"],
+            evidence: { observations: [] }
+          });
+          const runStatus = await runRegistry.status(runId);
+          return {
+            recordsChecked: 1, candidatesStaged: 0, conflicts: 0, unableToVerify: 1, providerFailures: 0, budgetUsed: 1,
+            state: "unable_to_verify", reasons: ["Verification could not complete after three attempts; this resource needs human follow-up."],
+            providerIssues: ["execution:retry_exhausted"], resourceId, resourceName,
+            done: runStatus === "completed" || runStatus === "cancelled", runStatus
+          };
+        } catch { /* release below so a persistence failure remains retryable */ }
+      }
+      try { await runRegistry.releaseLease(runId, leaseToken); } catch { /* preserve the original execution error */ }
     }
     throw error;
   }

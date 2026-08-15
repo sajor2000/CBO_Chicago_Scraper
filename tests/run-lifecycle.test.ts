@@ -59,10 +59,10 @@ test("budget-paused runs require a bounded continuation budget", () => {
 test("releasing a lease lets the same checkpoint be claimed again", () => {
   const runs = new InMemoryRunRegistry();
   const run = runs.launch({ idempotencyKey: "release", selection: ["r1", "r2"], budget: 2 });
-  assert.equal(runs.claimNext(run.id)?.resourceId, "r1");
+  assert.equal(runs.claimNext(run.id)?.attempt, 1);
   assert.throws(() => runs.claimNext(run.id), RunLockError);
   runs.releaseLease(run.id);
-  assert.equal(runs.claimNext(run.id)?.resourceId, "r1");
+  assert.equal(runs.claimNext(run.id)?.attempt, 2);
 });
 
 test("full cycles reuse the one active cycle and keep frozen snapshot membership", () => {
