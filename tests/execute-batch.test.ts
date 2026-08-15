@@ -16,6 +16,8 @@ test("execute route processes one checkpoint, sets maxDuration, and records fail
   assert.match(worker, /evidence: reviewProvenance/);
   assert.match(worker, /runRegistry\.status\(runId\)/);
   assert.match(worker, /completeCheckpoint\(runId, claim\.leaseToken, \{ providerFailures: 1 \}, "provider_failure"/);
+  assert.match(worker, /attempt >= 3/);
+  assert.match(worker, /unable_to_verify/);
   assert.match(worker, /releaseLease\(runId, leaseToken\)/);
   assert.doesNotMatch(route, /for \(let index = 0; index < limit/);
 });
