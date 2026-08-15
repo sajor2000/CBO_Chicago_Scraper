@@ -89,7 +89,7 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     };
   } catch (error) {
     if (leaseToken) {
-      try { await runRegistry.failCheckpoint(runId, leaseToken); } catch { /* preserve the original execution error */ }
+      try { await runRegistry.releaseLease(runId, leaseToken); } catch { /* preserve the original execution error */ }
     }
     throw error;
   }
