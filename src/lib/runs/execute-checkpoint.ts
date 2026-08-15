@@ -40,6 +40,8 @@ export function providerIssuesFor(observations: CapturedObservation[], advisoryE
 /** Executes one leased checkpoint; callers own authorization and HTTP response mapping. */
 export async function executeCheckpoint(runId: string): Promise<CheckpointResult> {
   let leaseToken: string | undefined;
+  let resourceId: string | undefined;
+  let resourceName: string | undefined;
   try {
     const claim = await runRegistry.claimNext(runId);
     if (!claim) {
@@ -50,10 +52,12 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
       return { message, done: true, ...blankStep(), runStatus: run?.status };
     }
     leaseToken = claim.leaseToken;
+    resourceId = claim.resourceId;
     const hostedEvidence = hostedEvidenceFromEnv();
     const seeded = await reviewRepository.seededResource(claim.resourceId, claim.snapshotId);
     if (!seeded) throw new Error("Selected resource has no seeded public snapshot.");
     const resource = referenceResourceFromSnapshot(seeded);
+    resourceName = resource.name;
     const observations = await within(hostedEvidence.collect(resource), 30_000, "Evidence collection");
     let advisoryError: unknown;
     const advisory = await within(hostedEvidence.score(resource, observations), 25_000, "Evidence scoring").catch((error) => {
@@ -89,7 +93,24 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     };
   } catch (error) {
     if (leaseToken) {
-      try { await runRegistry.releaseLease(runId, leaseToken); } catch { /* preserve the original execution error */ }
+      try {
+        await runRegistry.completeCheckpoint(runId, leaseToken, { providerFailures: 1 }, "provider_failure", {
+          resourceName: resourceName ?? "Selected resource",
+          verificationState: "provider_failure",
+          reasons: ["Verification could not complete; this resource needs a later retry."],
+          providerIssues: ["execution:failed"],
+          evidence: { observations: [] }
+        });
+        const runStatus = await runRegistry.status(runId);
+        return {
+          recordsChecked: 1, candidatesStaged: 0, conflicts: 0, unableToVerify: 0, providerFailures: 1, budgetUsed: 1,
+          state: "provider_failure", reasons: ["Verification could not complete; this resource needs a later retry."],
+          providerIssues: ["execution:failed"], resourceId, resourceName,
+          done: runStatus === "completed" || runStatus === "cancelled", runStatus
+        };
+      } catch {
+        try { await runRegistry.releaseLease(runId, leaseToken); } catch { /* preserve the original execution error */ }
+      }
     }
     throw error;
   }
