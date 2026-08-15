@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { executeScheduledCron } from "../src/app/api/cron/route.ts";
-import { providerIssuesFor } from "../src/lib/runs/execute-checkpoint.ts";
+import { providerIssuesFor, recoverCheckpointFailure } from "../src/lib/runs/execute-checkpoint.ts";
 import { CronAuthorizationError } from "../src/lib/runs/cron.ts";
 
 test("execute route processes one checkpoint, sets maxDuration, and records failures", () => {
@@ -15,11 +15,20 @@ test("execute route processes one checkpoint, sets maxDuration, and records fail
   assert.match(worker, /resourceName: resource\.name/);
   assert.match(worker, /evidence: reviewProvenance/);
   assert.match(worker, /runRegistry\.status\(runId\)/);
-  assert.match(worker, /attempt >= 3/);
-  assert.match(worker, /failCheckpoint\(runId, activeLeaseToken\)/);
-  assert.doesNotMatch(worker, /completeCheckpoint\(runId, leaseToken, \{ unableToVerify: 1 \}/);
-  assert.match(worker, /releaseLease\(runId, activeLeaseToken\)/);
+  assert.match(worker, /recoverCheckpointFailure\(runRegistry, runId, leaseToken, attempt\)/);
   assert.doesNotMatch(route, /for \(let index = 0; index < limit/);
+});
+
+test("checkpoint failures release twice before failing the run", async () => {
+  const calls: string[] = [];
+  const registry = {
+    releaseLease: async (_runId: string, leaseToken: string) => { calls.push(`release:${leaseToken}`); },
+    failCheckpoint: async (_runId: string, leaseToken: string) => { calls.push(`fail:${leaseToken}`); }
+  };
+  await recoverCheckpointFailure(registry, "run-1", "lease-1", 1);
+  await recoverCheckpointFailure(registry, "run-1", "lease-2", 2);
+  await recoverCheckpointFailure(registry, "run-1", "lease-3", 3);
+  assert.deepEqual(calls, ["release:lease-1", "release:lease-2", "fail:lease-3"]);
 });
 
 test("execution bounds provider work and passes its lease to candidate staging", () => {

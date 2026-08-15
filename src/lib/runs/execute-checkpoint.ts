@@ -37,6 +37,21 @@ export function providerIssuesFor(observations: CapturedObservation[], advisoryE
   return [...issues, `azure_openai:${state}`];
 }
 
+export async function recoverCheckpointFailure(
+  registry: Pick<typeof runRegistry, "failCheckpoint" | "releaseLease">,
+  runId: string,
+  leaseToken: string,
+  attempt: number
+): Promise<void> {
+  if (attempt >= 3) {
+    try {
+      await registry.failCheckpoint(runId, leaseToken);
+      return;
+    } catch { /* release below so a failed state transition remains retryable */ }
+  }
+  try { await registry.releaseLease(runId, leaseToken); } catch { /* preserve the original execution error */ }
+}
+
 /** Executes one leased checkpoint; callers own authorization and HTTP response mapping. */
 export async function executeCheckpoint(runId: string): Promise<CheckpointResult> {
   let leaseToken: string | undefined;
@@ -94,16 +109,7 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
       done: runStatus === "completed" || runStatus === "cancelled", runStatus, resourceName: resource.name
     };
   } catch (error) {
-    if (leaseToken) {
-      const activeLeaseToken = leaseToken;
-      if (attempt >= 3) {
-        try {
-          await runRegistry.failCheckpoint(runId, activeLeaseToken);
-          leaseToken = undefined;
-        } catch { /* release below so a failed state transition remains retryable */ }
-      }
-      if (leaseToken) try { await runRegistry.releaseLease(runId, activeLeaseToken); } catch { /* preserve the original execution error */ }
-    }
+    if (leaseToken) await recoverCheckpointFailure(runRegistry, runId, leaseToken, attempt);
     throw error;
   }
 }
