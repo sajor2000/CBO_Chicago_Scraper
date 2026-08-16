@@ -67,14 +67,23 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   let runs: Awaited<ReturnType<typeof runRegistry.listRecent>> = [];
   let siteReports: Awaited<ReturnType<typeof runRegistry.listRecentSiteReports>> = [];
   let calibration: Awaited<ReturnType<typeof reviewRepository.calibrationSummary>> = [];
+  let dueCount = 0;
   let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
   if (isOperator) {
     readiness = await verificationReadiness();
     if (readiness.ready) {
-      resources = await reviewRepository.listSeededResources(100);
-      runs = await runRegistry.listRecent();
-      siteReports = await runRegistry.listRecentSiteReports();
-      calibration = await reviewRepository.calibrationSummary();
+      const [loadedResources, loadedRuns, loadedReports, loadedCalibration, preview] = await Promise.all([
+        reviewRepository.listSeededResources(100),
+        runRegistry.listRecent(),
+        runRegistry.listRecentSiteReports(),
+        reviewRepository.calibrationSummary(),
+        runRegistry.fullCyclePreview()
+      ]);
+      resources = loadedResources;
+      runs = loadedRuns;
+      siteReports = loadedReports;
+      calibration = loadedCalibration;
+      dueCount = preview?.dueCount ?? 0;
     }
   }
 
@@ -118,7 +127,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
           <p className="pilot-empty">Verification is blocked until all readiness checks pass.</p>
           <ul className="readiness-list">{readiness?.checks.filter((check) => !check.ready).map((check) => <li key={check.name}><strong>{check.name}:</strong> {check.message}</li>)}</ul>
         </section>
-        : <RunControls resources={resources} />
+        : <RunControls resources={resources} dueCount={dueCount} />
     )}
 
     {isOperator && <SiteReports reports={siteReports} />}

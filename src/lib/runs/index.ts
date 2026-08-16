@@ -254,13 +254,45 @@ export class NeonRunRegistry {
     });
   }
 
+  /** Derives the current due cohort from the latest promoted manifest; callers never submit its IDs. */
+  async launchCurrentFullCycle(input: { idempotencyKey: string; budget: number }): Promise<VerificationRun> {
+    const manifest = await this.#query<{ id: string }>(`
+      select id
+      from review_workspace.refresh_manifests
+      where status = 'reconciled'
+      order by promoted_at desc
+      limit 1
+    `);
+    if (!manifest[0]?.id) throw new Error("A promoted reconciled refresh is required before a full cycle can start.");
+    return this.launchFullCycle({ ...input, manifestId: manifest[0].id });
+  }
+
+  async fullCyclePreview(): Promise<{ dueCount: number } | undefined> {
+    const rows = await this.#query<{ due_count: number }>(`
+      select count(*)::integer as due_count
+      from review_workspace.refresh_snapshot_memberships membership
+      join review_workspace.refresh_manifests manifest on manifest.id = membership.manifest_id
+      left join review_workspace.resource_verification_due due on due.resource_id = membership.resource_id
+      where manifest.status = 'reconciled'
+        and manifest.id = (
+          select id from review_workspace.refresh_manifests
+          where status = 'reconciled'
+          order by promoted_at desc
+          limit 1
+        )
+        and (due.next_due_at is null or due.next_due_at <= now())
+    `);
+    return rows[0] ? { dueCount: Number(rows[0].due_count) } : undefined;
+  }
+
   /** Starts or resumes the active scheduled cohort over every due seeded resource. */
   async launchScheduled(now = new Date()): Promise<VerificationRun> {
     const active = await this.#query<{ id: string }>(`
       select run.id
       from review_workspace.verification_runs run
       join review_workspace.run_current_state state on state.run_id = run.id
-      where run.run_mode in ('manual_full_cycle', 'scheduled_cycle') and state.status in ('queued', 'running', 'paused')
+      where (run.run_mode = 'manual_selected' and state.status in ('queued', 'running'))
+         or (run.run_mode in ('manual_full_cycle', 'scheduled_cycle') and state.status in ('queued', 'running', 'paused'))
       order by run.started_at asc limit 1
     `);
     if (active[0]?.id) return (await this.get(active[0].id))!;
@@ -364,6 +396,7 @@ export class NeonRunRegistry {
   }
 
   async get(runId: string): Promise<VerificationRun | undefined> {
+    if (!isUuid(runId)) return undefined;
     const memberships = `coalesce((select jsonb_agg(jsonb_build_object('resourceId', membership.resource_id, 'snapshotId', membership.resource_snapshot_id) order by checkpoint.ordinal)
       from review_workspace.run_checkpoints checkpoint
       join review_workspace.cycle_memberships membership on membership.id = checkpoint.cycle_membership_id
@@ -377,7 +410,7 @@ export class NeonRunRegistry {
     return rows.map(fromRow);
   }
 
-  async listRecentSiteReports(limit = 50): Promise<SiteVerificationReport[]> {
+  async listRecentSiteReports(limit = 50, runId?: string, offset = 0): Promise<SiteVerificationReport[]> {
     const rows = await this.#query<{
       run_id: string;
       resource_id: string;
@@ -409,8 +442,9 @@ export class NeonRunRegistry {
           )
         order by state.updated_at desc limit 1
       ) candidate on true
-      order by outcome.completed_at desc limit $1
-    `, [Math.max(1, Math.min(limit, 100))]);
+      where ($2::uuid is null or outcome.run_id = $2::uuid)
+      order by outcome.completed_at desc limit $1 offset $3
+    `, [Math.max(1, Math.min(limit, 100)), runId ?? null, Math.max(0, offset)]);
     return rows.map((row) => ({
       runId: row.run_id,
       resourceId: row.resource_id,
@@ -621,7 +655,7 @@ export class NeonRunRegistry {
       const current = await this.get(runId);
       if (!current) throw new Error("Run not found.");
       if (current.status === "cancelled") throw new Error("A cancelled run is terminal.");
-      if (current.status === "paused" && current.report.budgetUsed >= current.budget) throw new Error("Additional budget is required to continue this run.");
+      if (current.status === "paused") throw new Error("Additional budget does not fit the remaining frozen scope.");
       return current;
     }
     const resumed = await this.get(rows[0].id);

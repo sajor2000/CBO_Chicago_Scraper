@@ -49,19 +49,21 @@ test("a superseding edit invalidates prior approval and retains the audit histor
   assert.equal(reviews.history("c2").length, 3);
 });
 
-test("operator controls prevent a second launch while a pilot request is in flight", () => {
+test("operator controls make all-due audit server-owned and prevent a second launch while it is in flight", () => {
   const controls = readFileSync(new URL("../src/app/review/run-controls.tsx", import.meta.url), "utf8");
   assert.match(controls, /const \[busy, setBusy\] = useState\(false\)/);
-  assert.match(controls, /disabled=\{!selected\.length \|\| busy\}/);
-  assert.match(controls, /body: JSON\.stringify\(\{ limit: 1 \}\)/);
-  assert.match(controls, /Cancel run/);
-  assert.match(controls, /window\.location\.assign\("\/review"\)/);
+  assert.match(controls, /Audit all due listings/);
+  assert.match(controls, /mode: "manual_full_cycle"/);
+  assert.match(controls, /useState\(dueCount \|\| 1\)/);
+  assert.doesNotMatch(controls, /for \(let index = 0; index < selected\.length/);
+  assert.match(controls, /window\.location\.assign\(`\/review\/runs\/\$\{run\.id\}`\)/);
 });
 
-test("operator controls preserve an unfinished run for recovery instead of relaunching it", () => {
+test("operator controls send selected and all-due work to the durable run dashboard", () => {
   const controls = readFileSync(new URL("../src/app/review/run-controls.tsx", import.meta.url), "utf8");
-  assert.match(controls, /sessionStorage/);
-  assert.match(controls, /action: "resume"/);
+  assert.match(controls, /Run a selected spot check instead/);
+  assert.match(controls, /Audit selected/);
+  assert.match(controls, /Approved checkpoint budget/);
 });
 
 test("review queue mounts operator controls and human-readable candidate rows", () => {
