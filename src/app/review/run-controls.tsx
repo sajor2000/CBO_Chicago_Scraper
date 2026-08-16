@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { clampSelectedBudget } from "./selected-budget.ts";
 
 type Resource = { id: string; name: string };
 type LaunchRequest =
@@ -39,9 +40,11 @@ export function RunControls({ resources, dueCount }: { resources: Resource[]; du
     }
   };
 
-  const toggle = (id: string) => setSelected((current) => current.includes(id)
-    ? current.filter((value) => value !== id)
-    : current.length < 100 ? [...current, id] : current);
+  const toggle = (id: string) => setSelected((current) => {
+    const next = current.includes(id) ? current.filter((value) => value !== id) : current.length < 100 ? [...current, id] : current;
+    setSelectedBudget((value) => clampSelectedBudget(value, next.length));
+    return next;
+  });
 
   return <section className="pilot-panel" aria-labelledby="audit-title">
     <div>
