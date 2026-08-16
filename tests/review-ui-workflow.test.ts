@@ -34,7 +34,7 @@ test("route rejects nonterminal eligibility labels before review mutation", asyn
   for (const action of ["edit", "deferred"] as const) {
     const response = await postReview(request(action), dependencies);
     assert.equal(response.status, 400);
-    assert.match((await response.json() as { error: string }).error, /only accompany approval or rejection/i);
+    assert.match((await response.json() as { error: string }).error, /terminal decision/i);
   }
 });
 
@@ -66,6 +66,12 @@ test("operator controls send selected and all-due work to the durable run dashbo
   assert.match(controls, /Approved checkpoint budget/);
 });
 
+test("operator run controls process one protected checkpoint at a time", () => {
+  const actions = readFileSync(new URL("../src/app/review/run-actions.tsx", import.meta.url), "utf8");
+  assert.match(actions, /Process next checkpoint/);
+  assert.match(actions, /fetch\(`\/api\/runs\/\$\{runId\}\/execute`, \{ method: "POST" \}\)/);
+});
+
 test("review queue mounts operator controls and human-readable candidate rows", () => {
   const page = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
   assert.match(page, /RunControls/);
@@ -83,6 +89,11 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   assert.match(page, /CalibrationSummary/);
 });
 
+test("seeded-resource picker is scoped to the current reconciled baseline", () => {
+  const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
+  assert.match(repository, /async listSeededResources[\s\S]*refresh_snapshot_memberships[\s\S]*status = 'reconciled'[\s\S]*order by promoted_at desc/);
+});
+
 test("every completed resource has a durable, evidence-linked report surface", () => {
   const reports = readFileSync(new URL("../src/app/review/site-reports.tsx", import.meta.url), "utf8");
   const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
@@ -91,6 +102,8 @@ test("every completed resource has a durable, evidence-linked report surface", (
   assert.match(reports, /Review possible closure/);
   assert.match(reports, /Verification incomplete/);
   assert.match(reports, /View evidence and reasoning/);
+  assert.match(reports, /evidence-facts/);
+  assert.match(reports, /evidence-excerpt/);
   assert.match(registry, /report_delta->'siteReport'/);
   assert.match(registry, /run_checkpoint_outcomes/);
 });
@@ -126,4 +139,23 @@ test("review queue accepts bounded filters and detail includes human decision hi
   assert.match(repository, /'superseded'::text/);
   assert.match(repository, /provenance->'reviewerEdit'/);
   assert.match(repository, /reviewer_cbo_eligibility/);
+});
+
+test("not-CBO findings have a dedicated human eligibility review path", () => {
+  const page = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
+  const actions = readFileSync(new URL("../src/app/review/review-actions.tsx", import.meta.url), "utf8");
+  assert.match(page, /eligibility_review/);
+  assert.match(actions, /Confirm not eligible CBO/);
+  assert.match(actions, /Keep as eligible CBO/);
+  assert.match(actions, /decide\("eligibility_confirmed", false\)/);
+  assert.match(actions, /decide\("eligibility_confirmed", true\)/);
+});
+
+test("eligibility confirmation never becomes an export approval", () => {
+  const reviews = new InMemoryReviewRepository();
+  reviews.stage({ id: "eligibility", kind: "eligibility_review", proposedValues: { cbo_eligibility: "not_a_cbo" } });
+  const confirmed = reviews.decide({ candidateId: "eligibility", expectedRevision: 1, reviewerSubject: "reviewer-1", action: "eligibility_confirmed", reviewerCboEligibility: false, reason: "Municipal facility, not a CBO." });
+  assert.equal(confirmed.status, "eligibility_confirmed");
+  assert.equal(confirmed.approvedValues, undefined);
+  assert.equal(confirmed.decisions[0]?.cboEligibility, false);
 });

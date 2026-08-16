@@ -83,13 +83,26 @@ export async function executeCheckpoint(runId: string): Promise<CheckpointResult
     });
     const providerIssues = providerIssuesFor(observations, advisoryError);
     if (providerIssues.length) console.warn("Verification provider issues", { runId, resourceId: claim.resourceId, providerIssues });
+    if (!advisory) {
+      await runRegistry.completeCheckpoint(runId, claim.leaseToken, { providerFailures: 1 }, "provider_failure", {
+        resourceName,
+        verificationState: "provider_failure",
+        reasons: ["AI advisory output was unavailable or invalid, so no AI-guided conclusion was used."],
+        providerIssues,
+        evidence: reviewProvenance({ observations })
+      });
+      leaseToken = undefined;
+      const runStatus = await runRegistry.status(runId);
+      return { recordsChecked: 1, candidatesStaged: 0, conflicts: 0, unableToVerify: 0, providerFailures: 1, budgetUsed: 1,
+        state: "provider_failure", reasons: ["AI advisory output was unavailable or invalid, so no AI-guided conclusion was used."], providerIssues, resourceId, resourceName,
+        done: runStatus === "completed" || runStatus === "cancelled", runStatus };
+    }
     const output = await processVerificationCheckpoint({
       resource,
       observations,
       advisory,
       stage: (candidate) => reviewRepository.stageVerification({ resourceId: resource.id, runId, leaseToken: claim.leaseToken, ...candidate })
     });
-    if (!advisory) output.report.providerFailures = (output.report.providerFailures ?? 0) + 1;
     await runRegistry.completeCheckpoint(runId, claim.leaseToken, output.report, output.outcome, {
       resourceName: resource.name,
       verificationState: output.result.state,

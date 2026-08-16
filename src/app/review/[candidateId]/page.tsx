@@ -80,7 +80,9 @@ export default async function CandidateReviewPage({ params }: { params: Promise<
         </dl>
       ) : (
         <p className="conflict-note">
-          {candidate.kind === "closure_review"
+          {candidate.kind === "eligibility_review"
+            ? "This listing was flagged as potentially not being a CBO. Review the captured evidence and record a human eligibility decision; this does not remove or publish any directory record."
+            : candidate.kind === "closure_review"
             ? "This is a closure conflict with no proposed directory field. Review the evidence, then defer, reject, or create a closed-status proposal for a separate approval. The app never auto-closes a resource."
             : "No field values were proposed for this candidate."}
         </p>

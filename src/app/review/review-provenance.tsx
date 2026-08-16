@@ -1,6 +1,7 @@
 import type { ReviewProvenance } from "../../lib/repositories/review.ts";
 
 const label = (value: string) => value.replace(/_/g, " ");
+const compact = (value: string) => value.replace(/\s+/g, " ").replace(/[`*_>#]/g, "").trim().slice(0, 500);
 
 export function ReviewProvenanceCard({ evidence, provenance }: { evidence: string[]; provenance: ReviewProvenance }) {
   return <>
@@ -10,8 +11,10 @@ export function ReviewProvenanceCard({ evidence, provenance }: { evidence: strin
         {provenance.observations.map((observation, index) => <li key={`${observation.provider}-${observation.observedAt}-${index}`}>
           <strong>{observation.provider}</strong>: {label(observation.state)} ({observation.observedAt})
           {observation.sourceUrl ? <> · <a href={observation.sourceUrl} target="_blank" rel="noreferrer">source</a></> : null}
-          {observation.excerpt ? <p>{observation.excerpt}</p> : null}
-          {observation.values ? <p>{Object.entries(observation.values).map(([key, value]) => `${label(key)}: ${value}`).join(" · ")}</p> : null}
+          {observation.values && Object.keys(observation.values).length ? <dl className="evidence-facts">
+            {Object.entries(observation.values).filter(([, value]) => value).map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{value}</dd></div>)}
+          </dl> : null}
+          {observation.excerpt ? <p className="evidence-excerpt">{compact(observation.excerpt)}</p> : null}
         </li>)}
       </ul> : evidence.length ? <ul className="evidence-list">{evidence.map((item) => <li key={item}>{item.startsWith("http") ? <a href={item} target="_blank" rel="noreferrer">{item}</a> : item}</li>)}</ul> : <p>No evidence was attached to this revision.</p>}
     </section>

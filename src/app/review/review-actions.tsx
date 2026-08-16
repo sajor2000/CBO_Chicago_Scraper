@@ -15,7 +15,7 @@ export function ReviewActions({
   candidateId: string;
   expectedRevision: number;
   proposedValues: Record<string, string>;
-  candidateKind?: "update" | "closure_review" | "new_resource";
+  candidateKind?: "update" | "closure_review" | "new_resource" | "eligibility_review";
   candidateStatus: CandidateStatus;
 }) {
   const fields = useMemo(() => Object.keys(proposedValues), [proposedValues]);
@@ -33,7 +33,7 @@ export function ReviewActions({
     </section>;
   }
 
-  const decide = async (action: "approved" | "rejected" | "deferred" | "edit" | "confirm_closed") => {
+  const decide = async (action: "approved" | "rejected" | "deferred" | "edit" | "confirm_closed" | "eligibility_confirmed", eligibility?: boolean) => {
     if (!reason.trim()) return setMessage("Add a brief review reason before deciding.");
     if (action === "approved" && !selected.length) return setMessage("Select at least one field to approve.");
     if (action === "edit" && Object.values(draft).some((value) => !value.trim())) {
@@ -51,7 +51,7 @@ export function ReviewActions({
           action: action === "confirm_closed" ? "edit" : action,
           fields: action === "approved" ? selected : undefined,
           proposedValues: action === "confirm_closed" ? { status: "closed" } : action === "edit" ? draft : undefined,
-          reviewerCboEligibility: action === "approved" || action === "rejected" ? cboEligibility === "eligible" ? true : cboEligibility === "not_eligible" ? false : undefined : undefined,
+          reviewerCboEligibility: action === "approved" || action === "rejected" || action === "eligibility_confirmed" ? eligibility ?? (cboEligibility === "eligible" ? true : cboEligibility === "not_eligible" ? false : undefined) : undefined,
           reason
         })
       });
@@ -73,7 +73,9 @@ export function ReviewActions({
   return <section className="review-actions" aria-labelledby="decision-title">
     <h2 id="decision-title">Decision</h2>
     <p>Approve only the fields supported by the evidence. A decision cannot write to ChicagoHealthMap production.</p>
-    {fields.length ? (
+    {candidateKind === "eligibility_review" ? (
+      <p className="conflict-note">The audit found evidence that this listing may not be a community-based organization. Confirm or reject that eligibility finding; neither action changes the source directory.</p>
+    ) : fields.length ? (
       <>
         <fieldset disabled={busy}>
           <legend>Approved fields</legend>
@@ -114,23 +116,29 @@ export function ReviewActions({
         placeholder="Why is this evidence sufficient, incomplete, or incorrect?"
       />
     </label>
-    <fieldset disabled={busy}>
+    {candidateKind !== "eligibility_review" ? <fieldset disabled={busy}>
       <legend>CBO eligibility assessment (optional)</legend>
       <label><input type="radio" name="cbo-eligibility" checked={cboEligibility === ""} onChange={() => setCboEligibility("")} /> Not assessed</label>
       <label><input type="radio" name="cbo-eligibility" checked={cboEligibility === "eligible"} onChange={() => setCboEligibility("eligible")} /> Eligible CBO</label>
       <label><input type="radio" name="cbo-eligibility" checked={cboEligibility === "not_eligible"} onChange={() => setCboEligibility("not_eligible")} /> Not eligible CBO</label>
       <p>Recorded only when approving or rejecting; it does not affect field approval.</p>
-    </fieldset>
+    </fieldset> : null}
     <div className="actions">
-      {candidateKind === "closure_review" && !fields.length ? <button type="button" className="primary-button" disabled={busy || !reason.trim()} onClick={() => void decide("confirm_closed")}>Propose status: closed</button> : null}
-      <button type="button" className="primary-button" disabled={busy || !reason.trim() || !fields.length || selected.length === 0} onClick={() => void decide("approved")}>
-        {busy ? "Saving…" : "Approve fields"}
-      </button>
-      <button type="button" disabled={busy || !reason.trim() || !fields.length || Object.values(draft).some((value) => !value.trim())} onClick={() => void decide("edit")}>
-        Save edited proposal
-      </button>
-      <button type="button" disabled={busy || !reason.trim()} onClick={() => void decide("deferred")}>Defer</button>
-      <button type="button" className="reject-button" disabled={busy || !reason.trim()} onClick={() => void decide("rejected")}>Reject</button>
+      {candidateKind === "eligibility_review" ? <>
+        <button type="button" className="primary-button" disabled={busy || !reason.trim()} onClick={() => void decide("eligibility_confirmed", false)}>Confirm not eligible CBO</button>
+        <button type="button" className="reject-button" disabled={busy || !reason.trim()} onClick={() => void decide("eligibility_confirmed", true)}>Keep as eligible CBO</button>
+        <button type="button" disabled={busy || !reason.trim()} onClick={() => void decide("deferred")}>Defer</button>
+      </> : <>
+        {candidateKind === "closure_review" && !fields.length ? <button type="button" className="primary-button" disabled={busy || !reason.trim()} onClick={() => void decide("confirm_closed")}>Propose status: closed</button> : null}
+        <button type="button" className="primary-button" disabled={busy || !reason.trim() || !fields.length || selected.length === 0} onClick={() => void decide("approved")}>
+          {busy ? "Saving…" : "Approve fields"}
+        </button>
+        <button type="button" disabled={busy || !reason.trim() || !fields.length || Object.values(draft).some((value) => !value.trim())} onClick={() => void decide("edit")}>
+          Save edited proposal
+        </button>
+        <button type="button" disabled={busy || !reason.trim()} onClick={() => void decide("deferred")}>Defer</button>
+        <button type="button" className="reject-button" disabled={busy || !reason.trim()} onClick={() => void decide("rejected")}>Reject</button>
+      </>}
     </div>
     {message && <p className="decision-message" role="status">{message}</p>}
   </section>;

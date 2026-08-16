@@ -34,6 +34,20 @@ test("a Google-only closure is staged for review without a closed field", async 
   assert.deepEqual(staged?.proposedValues, {});
 });
 
+test("a not-CBO advisory stages a human eligibility review without a field change", async () => {
+  let staged: { kind: string; beforeValues: Record<string, string>; proposedValues: Record<string, string> } | undefined;
+  const output = await processVerificationCheckpoint({
+    resource,
+    observations: [{ provider: "google_places", state: "success", observedAt }],
+    advisory: { cboEligibility: "not_a_cbo", operationalAssessment: "open", evidenceQuality: "high", citations: ["google_places"], rationale: "This is a public beach." },
+    stage: async (input) => { staged = input; }
+  });
+  assert.equal(output.result.state, "no_change");
+  assert.equal(output.outcome, "candidate_staged");
+  assert.equal(output.report.candidatesStaged, 1);
+  assert.deepEqual(staged && { kind: staged.kind, beforeValues: staged.beforeValues, proposedValues: staged.proposedValues }, { kind: "eligibility_review", beforeValues: { cbo_eligibility: "not assessed" }, proposedValues: { cbo_eligibility: "not a CBO" } });
+});
+
 test("blocked sources are counted as unable to verify without staging a candidate", async () => {
   let staged = false;
   const output = await processVerificationCheckpoint({

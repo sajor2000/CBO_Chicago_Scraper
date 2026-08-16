@@ -62,7 +62,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
 
   const filters = await searchParams;
   const text = (key: string) => typeof filters[key] === "string" ? filters[key] : undefined;
-  const candidates = isReviewer ? await reviewRepository.list({ status: text("status") as "staged" | "deferred" | "rejected" | "approved" | undefined, kind: text("kind") as "update" | "closure_review" | "new_resource" | undefined, evidenceQuality: text("evidenceQuality") as "high" | "medium" | "low" | undefined }) : [];
+  const candidates = isReviewer ? await reviewRepository.list({ status: text("status") as "staged" | "deferred" | "rejected" | "approved" | undefined, kind: text("kind") as "update" | "closure_review" | "new_resource" | "eligibility_review" | undefined, evidenceQuality: text("evidenceQuality") as "high" | "medium" | "low" | undefined }) : [];
   let resources: Array<{ id: string; name: string }> = [];
   let runs: Awaited<ReturnType<typeof runRegistry.listRecent>> = [];
   let siteReports: Awaited<ReturnType<typeof runRegistry.listRecentSiteReports>> = [];
@@ -139,7 +139,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         <h2 id="queue-title">Staged candidates</h2>
         <form className="queue-filters" action="/review">
           <label>Status <select name="status" defaultValue={text("status") ?? ""}><option value="">All</option><option value="staged">Staged</option><option value="deferred">Deferred</option><option value="rejected">Rejected</option><option value="approved">Approved</option></select></label>
-          <label>Kind <select name="kind" defaultValue={text("kind") ?? ""}><option value="">All</option><option value="update">Update</option><option value="closure_review">Closure review</option><option value="new_resource">New resource</option></select></label>
+          <label>Kind <select name="kind" defaultValue={text("kind") ?? ""}><option value="">All</option><option value="update">Update</option><option value="closure_review">Closure review</option><option value="eligibility_review">CBO eligibility review</option><option value="new_resource">New resource</option></select></label>
           <label>Evidence quality <select name="evidenceQuality" defaultValue={text("evidenceQuality") ?? ""}><option value="">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
           <button type="submit">Filter</button>
         </form>
@@ -158,7 +158,9 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
                   <span className={`status-chip status-${candidate.status}`}>{statusLabel(candidate.status)}</span>
                 </div>
                 <p className="candidate-meta">
-                  {candidate.kind === "closure_review" && !fields.length
+                  {candidate.kind === "eligibility_review"
+                    ? "AI flagged this listing as potentially not being a CBO — open to record the human eligibility decision."
+                    : candidate.kind === "closure_review" && !fields.length
                     ? "Conflict with no proposed field change — open to review evidence."
                     : (preview || "No proposed fields")}
                 </p>

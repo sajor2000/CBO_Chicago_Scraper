@@ -1,4 +1,4 @@
-export type CandidateStatus = "staged" | "deferred" | "rejected" | "approved" | "publish_pending" | "published" | "publish_failed";
+export type CandidateStatus = "staged" | "deferred" | "rejected" | "approved" | "eligibility_confirmed" | "publish_pending" | "published" | "publish_failed";
 import type { ReviewDecision } from "../domain/review-workspace.ts";
 import type { AiAdvisory } from "../verification/index.ts";
 import { summarizeCalibration, type CalibrationSummary } from "../verification/calibration.ts";
@@ -25,7 +25,7 @@ export interface ReviewCandidate {
   revision: number;
   status: CandidateStatus;
   resourceName?: string;
-  kind?: "update" | "closure_review" | "new_resource";
+  kind?: "update" | "closure_review" | "new_resource" | "eligibility_review";
   proposedValues: FieldValues;
   beforeValues?: FieldValues;
   approvedValues?: FieldValues;
@@ -71,9 +71,9 @@ export class InMemoryReviewRepository {
   #candidates = new Map<string, ReviewCandidate>();
   #history = new Map<string, ReviewCandidate[]>();
 
-  stage(input: { id: string; proposedValues: FieldValues; beforeValues?: FieldValues; evidence?: string[]; provenance?: ReviewProvenance }): ReviewCandidate {
+  stage(input: { id: string; proposedValues: FieldValues; beforeValues?: FieldValues; evidence?: string[]; provenance?: ReviewProvenance; kind?: ReviewCandidate["kind"] }): ReviewCandidate {
     if (this.#candidates.has(input.id)) throw new Error("Candidate already exists.");
-    const candidate: ReviewCandidate = { id: input.id, revision: 1, status: "staged", proposedValues: { ...input.proposedValues }, beforeValues: input.beforeValues && { ...input.beforeValues }, evidence: [...(input.evidence ?? [])], provenance: structuredClone(input.provenance ?? { observations: [] }), decisions: [] };
+    const candidate: ReviewCandidate = { id: input.id, revision: 1, status: "staged", kind: input.kind, proposedValues: { ...input.proposedValues }, beforeValues: input.beforeValues && { ...input.beforeValues }, evidence: [...(input.evidence ?? [])], provenance: structuredClone(input.provenance ?? { observations: [] }), decisions: [] };
     this.#candidates.set(input.id, candidate);
     this.#history.set(input.id, [clone(candidate)]);
     return clone(candidate);
@@ -105,8 +105,12 @@ export class InMemoryReviewRepository {
     requiredReason(input.reason);
     const candidate = this.#current(input.candidateId, input.expectedRevision);
     if (candidate.status !== "staged" && candidate.status !== "deferred") throw new RevisionConflictError();
-    if (input.reviewerCboEligibility !== undefined && input.action !== "approved" && input.action !== "rejected") throw new Error("CBO eligibility can only accompany approval or rejection.");
-    if (input.action === "approved") {
+    if (input.reviewerCboEligibility !== undefined && input.action !== "approved" && input.action !== "rejected" && input.action !== "eligibility_confirmed") throw new Error("CBO eligibility can only accompany a terminal decision.");
+    if (input.action === "eligibility_confirmed") {
+      if (candidate.kind !== "eligibility_review" || input.reviewerCboEligibility === undefined) throw new Error("Eligibility confirmation requires an eligibility review and an explicit label.");
+      candidate.status = "eligibility_confirmed";
+      candidate.approvedValues = undefined;
+    } else if (input.action === "approved") {
       if (!input.fields?.length) throw new Error("Approval requires at least one proposed field.");
       if (input.fields.some((field) => !(field in candidate.proposedValues))) throw new Error("Approved fields must be proposed fields.");
       candidate.approvedValues = Object.fromEntries(input.fields.map((field) => [field, candidate.proposedValues[field]!])) as FieldValues;
@@ -151,9 +155,9 @@ type Sql = ReturnType<typeof reviewWorkspaceDb>;
 type CandidateRow = {
   id: string;
   revision: number;
-  status: "staged" | "deferred" | "rejected" | "approved_for_future_export";
+  status: "staged" | "deferred" | "rejected" | "approved_for_future_export" | "eligibility_confirmed";
   resource_name: string | null;
-  kind: "update" | "closure_review" | "new_resource" | null;
+  kind: "update" | "closure_review" | "new_resource" | "eligibility_review" | null;
   proposed_values: FieldValues;
   before_values: FieldValues;
   approved_field_paths: string[];
@@ -335,11 +339,15 @@ export class NeonReviewRepository {
   async listSeededResources(limit = 100): Promise<SeededResourceSummary[]> {
     const rows = await this.#query<{ id: string; name: string }>(`
       select resource.id, ${snapshotNameExpression} as name
-      from review_workspace.resources resource
-      join lateral (
-        select source_payload from review_workspace.resource_snapshots
-        where resource_id = resource.id order by imported_at desc limit 1
-      ) snapshot on true
+      from review_workspace.refresh_snapshot_memberships membership
+      join review_workspace.resources resource on resource.id = membership.resource_id
+      join review_workspace.resource_snapshots snapshot on snapshot.id = membership.resource_snapshot_id
+      where membership.manifest_id = (
+        select id from review_workspace.refresh_manifests
+        where status = 'reconciled'
+        order by promoted_at desc
+        limit 1
+      )
       order by name asc
       limit $1
     `, [Math.max(1, Math.min(limit, 100))]);
@@ -350,15 +358,18 @@ export class NeonReviewRepository {
     const rows = await this.#query<{ promptVersion: string | null; cboEligibility: AiAdvisory["cboEligibility"] | null; decision: "approved" | "rejected"; reviewerCboEligibility: boolean | null }>(`
       select revision.provenance->'advisory'->>'promptVersion' as "promptVersion",
         revision.provenance->'advisory'->>'cboEligibility' as "cboEligibility",
-        decision.decision, decision.reviewer_cbo_eligibility as "reviewerCboEligibility"
+        case when decision.decision = 'eligibility_confirmed'
+          then case when decision.reviewer_cbo_eligibility then 'approved' else 'rejected' end
+          else decision.decision end as decision,
+        decision.reviewer_cbo_eligibility as "reviewerCboEligibility"
       from review_workspace.candidate_current_state state
       join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
       join lateral (
         select decision, reviewer_cbo_eligibility from review_workspace.review_decisions
-        where candidate_revision_id = state.candidate_revision_id and decision in ('approved', 'rejected')
+        where candidate_revision_id = state.candidate_revision_id and decision in ('approved', 'rejected', 'eligibility_confirmed')
         order by decided_at desc limit 1
       ) decision on true
-      where state.status in ('approved_for_future_export', 'rejected')
+      where state.status in ('approved_for_future_export', 'rejected', 'eligibility_confirmed')
         and revision.provenance ? 'advisory'
     `);
     return summarizeCalibration(rows.flatMap((row) => row.promptVersion ? [{ promptVersion: row.promptVersion, cboEligibility: row.cboEligibility ?? undefined, decision: row.decision, reviewerCboEligibility: row.reviewerCboEligibility ?? undefined }] : []));
@@ -383,7 +394,8 @@ export class NeonReviewRepository {
   async decide(input: { candidateId: string; expectedRevision: number; reviewerSubject: string; action: CandidateAction; fields?: string[]; reason: string; reviewerCboEligibility?: boolean }): Promise<ReviewCandidate> {
     requiredReason(input.reason);
     if (input.action === "approved" && !input.fields?.length) throw new Error("Approval requires at least one proposed field.");
-    if (input.reviewerCboEligibility !== undefined && input.action !== "approved" && input.action !== "rejected") throw new Error("CBO eligibility can only accompany approval or rejection.");
+    if (input.reviewerCboEligibility !== undefined && input.action !== "approved" && input.action !== "rejected" && input.action !== "eligibility_confirmed") throw new Error("CBO eligibility can only accompany a terminal decision.");
+    if (input.action === "eligibility_confirmed" && input.reviewerCboEligibility === undefined) throw new Error("Eligibility confirmation requires an explicit CBO label.");
     const fields = input.action === "approved" ? input.fields! : [];
     const rows = await this.#query<{ id: string }>(`
       with authorized as (
@@ -406,6 +418,11 @@ export class NeonReviewRepository {
             and (select bool_and(revision.proposed_values ? field)
                  from jsonb_array_elements_text($2::jsonb) field)
           ))
+          and (
+            (revision.kind = 'eligibility_review' and $1 in ('eligibility_confirmed', 'deferred')
+              and ($1 <> 'eligibility_confirmed' or $7::boolean is not null))
+            or (revision.kind <> 'eligibility_review' and $1 <> 'eligibility_confirmed')
+          )
         returning state.candidate_id, state.candidate_revision_id
       ), decision as (
         insert into review_workspace.review_decisions
@@ -465,7 +482,7 @@ export class NeonReviewRepository {
     resourceId: string;
     runId: string;
     leaseToken: string;
-    kind: "update" | "closure_review" | "new_resource";
+    kind: "update" | "closure_review" | "new_resource" | "eligibility_review";
     beforeValues: FieldValues;
     proposedValues: FieldValues;
     observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: unknown }>;
@@ -503,7 +520,7 @@ export class NeonReviewRepository {
         cross join locked
         where active_checkpoint.cycle_membership_id is null
           and snapshots.id = (
-            select linked.resource_snapshot_id
+            select linked.id
             from review_workspace.resource_snapshot_receipts receipt
             join review_workspace.resource_snapshots linked on linked.id = receipt.resource_snapshot_id
             where linked.resource_id = $1::uuid order by linked.imported_at desc limit 1

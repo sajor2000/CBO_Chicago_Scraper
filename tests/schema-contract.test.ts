@@ -115,6 +115,21 @@ test("reviewer CBO eligibility migration is additive and separately runnable", (
   assert.doesNotMatch(packageJson, /apply:review-migrations[^\n]*008_reviewer_cbo_eligibility/);
 });
 
+test("CBO eligibility review migration adds only the human-review candidate kind", () => {
+  const schema = migration("012_cbo_eligibility_review.sql");
+  const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
+  assert.match(schema, /eligibility_review/);
+  assert.match(runner, /012_cbo_eligibility_review\.sql/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13\)/);
+});
+
+test("eligibility decisions are not export approvals", () => {
+  const schema = migration("013_eligibility_decision_state.sql");
+  const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
+  assert.match(schema, /eligibility_confirmed/);
+  assert.match(runner, /013_eligibility_decision_state\.sql/);
+});
+
 test("candidate staging serializes concurrent revisions for one resource", () => {
   const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
   assert.match(repository, /pg_advisory_xact_lock\(hashtextextended\(\$1::text, 0\)\)/);
@@ -176,7 +191,7 @@ test("mirror-copy groundwork fences idempotent refresh requests before table-cop
   assert.match(schema, /manifest_id uuid unique references review_workspace\.refresh_manifests/i);
   assert.match(schema, /before delete on review_workspace\.refresh_requests/i);
   assert.match(runner, /010_cbo_mirror_copy\.sql/);
-  assert.match(runner, /version in \(4, 9, 10, 11\)/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13\)/);
 });
 
 test("pause preserves an active lease until its fenced completion", () => {
@@ -197,6 +212,8 @@ test("candidate staging binds the checkpoint membership snapshot instead of late
   const method = repository.slice(repository.indexOf("async stageVerification"));
   assert.match(method, /checkpoint\.cycle_membership_id/i);
   assert.match(method, /cycle_memberships/i);
+  assert.match(method, /select linked\.id\s+from review_workspace\.resource_snapshot_receipts/i);
+  assert.doesNotMatch(method, /select linked\.resource_snapshot_id/i);
   assert.doesNotMatch(method, /order by snapshots\.imported_at desc limit 1/i);
 });
 
