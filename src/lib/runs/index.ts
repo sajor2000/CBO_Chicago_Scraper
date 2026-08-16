@@ -110,6 +110,7 @@ export class InMemoryRunRegistry {
   completeCheckpoint(runId: string, leaseToken: string, report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">>, outcome: CheckpointOutcome, now = new Date()) {
     const run = this.#require(runId);
     if (this.#claims.get(run.id) !== leaseToken) throw new RunLockError();
+    const paused = run.status === "paused";
     run.checkpoint += 1;
     run.report.recordsChecked += 1;
     run.report.budgetUsed += 1;
@@ -121,6 +122,7 @@ export class InMemoryRunRegistry {
     }
     if (outcome === "budget_exhausted" || (run.report.budgetUsed >= run.budget && run.checkpoint < run.selection.length)) run.status = "paused";
     else if (run.checkpoint >= run.selection.length) run.status = "completed";
+    else if (paused) run.status = "paused";
     else run.status = "queued";
   }
 
@@ -140,7 +142,6 @@ export class InMemoryRunRegistry {
   pause(runId: string) {
     const run = this.#require(runId);
     if (run.status === "cancelled" || run.status === "completed") return;
-    this.#claims.delete(run.id);
     run.status = "paused";
   }
 
@@ -599,12 +600,7 @@ export class NeonRunRegistry {
 
   async pause(runId: string): Promise<void> {
     await this.#query(`
-      with released as (
-        update review_workspace.run_checkpoints
-        set state = 'pending', lease_token = null, lease_expires_at = null
-        where run_id = $1::uuid and state = 'leased'
-      )
-      , paused as (
+      with paused as (
       update review_workspace.run_current_state
       set status = 'paused', updated_at = now(), revision = revision + 1
       where run_id = $1::uuid and status in ('queued', 'running')

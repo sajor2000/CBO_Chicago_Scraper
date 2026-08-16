@@ -44,6 +44,20 @@ test("paused runs resume but cancelled runs are terminal", () => {
   assert.throws(() => runs.resume(run.id), /cancelled/i);
 });
 
+test("pausing preserves an in-flight checkpoint lease until its worker completes", () => {
+  const runs = new InMemoryRunRegistry();
+  const run = runs.launch({ idempotencyKey: "pause-in-flight", selection: ["r1", "r2"], budget: 2 });
+  const claim = runs.claimNext(run.id)!;
+
+  runs.pause(run.id);
+  assert.equal(runs.claimNext(run.id), undefined);
+  runs.completeCheckpoint(run.id, claim.leaseToken, {}, "verified_no_change");
+  assert.equal(runs.get(run.id)?.status, "paused");
+
+  runs.resume(run.id);
+  assert.equal(runs.claimNext(run.id)?.resourceId, "r2");
+});
+
 test("budget-paused runs require a bounded continuation budget", () => {
   const runs = new InMemoryRunRegistry();
   const run = runs.launch({ idempotencyKey: "budget-resume", selection: ["r1", "r2"], budget: 1 });

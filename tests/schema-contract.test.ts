@@ -176,7 +176,16 @@ test("mirror-copy groundwork fences idempotent refresh requests before table-cop
   assert.match(schema, /manifest_id uuid unique references review_workspace\.refresh_manifests/i);
   assert.match(schema, /before delete on review_workspace\.refresh_requests/i);
   assert.match(runner, /010_cbo_mirror_copy\.sql/);
-  assert.match(runner, /version in \(4, 9, 10\)/);
+  assert.match(runner, /version in \(4, 9, 10, 11\)/);
+});
+
+test("pause preserves an active lease until its fenced completion", () => {
+  const schema = migration("011_pause_preserves_checkpoint_lease.sql");
+  const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
+  assert.match(schema, /state\.status in \('running', 'paused'\)/i);
+  assert.match(schema, /when state\.status = 'paused' then 'paused'/i);
+  const pause = registry.slice(registry.indexOf("async pause(runId"), registry.indexOf("async resume(runId"));
+  assert.doesNotMatch(pause, /run_checkpoints/);
 });
 
 test("candidate staging binds the checkpoint membership snapshot instead of latest", () => {
