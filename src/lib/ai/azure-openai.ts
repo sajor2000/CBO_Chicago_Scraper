@@ -78,7 +78,7 @@ const responseFormat = {
       properties: {
         cboEligibility: { type: "string", enum: ["confirmed_cbo", "likely_cbo", "not_a_cbo", "insufficient_evidence"] },
         operationalAssessment: { type: "string", enum: ["open", "closure_suspected", "unknown"] }, evidenceQuality: { type: "string", enum: ["high", "medium", "low"] },
-        citations: { type: "array", maxItems: 5, uniqueItems: true, items: { type: "string" } }, suggestedCategory: { anyOf: [{ type: "string", enum: categoryCodes }, { type: "null" }] }, rationale: { type: "string", minLength: 1, maxLength: 600 }
+        citations: { type: "array", items: { type: "string" } }, suggestedCategory: { anyOf: [{ type: "string", enum: categoryCodes }, { type: "null" }] }, rationale: { type: "string" }
       },
       required: ["cboEligibility", "operationalAssessment", "evidenceQuality", "citations", "suggestedCategory", "rationale"]
     }

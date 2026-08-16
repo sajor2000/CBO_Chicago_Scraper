@@ -24,6 +24,7 @@ test("Azure OpenAI scorer sends bounded evidence and accepts only structured adv
   assert.equal(request.temperature, undefined);
   assert.equal(request.response_format.type, "json_schema");
   assert.equal(request.response_format.json_schema.strict, true);
+  assert.doesNotMatch(JSON.stringify(request.response_format.json_schema.schema), /minLength|maxLength|maxItems|uniqueItems/);
   assert.doesNotMatch(requestBody, /do-not-send/);
 });
 
