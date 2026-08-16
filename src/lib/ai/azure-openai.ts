@@ -41,11 +41,13 @@ class AzureOpenAiMalformedResponseError extends Error {
 
 class AzureOpenAiRequestError extends Error {
   readonly status: number;
+  readonly unsupportedResponseFormat: boolean;
 
-  constructor(status: number) {
+  constructor(status: number, responseBody = "") {
     super(`Azure OpenAI request failed (${status}).`);
     this.name = "AzureOpenAiRequestError";
     this.status = status;
+    this.unsupportedResponseFormat = /\b(response_format|response format|json_schema|json schema|structured output)\b/i.test(responseBody);
   }
 }
 
@@ -119,7 +121,7 @@ export class AzureOpenAiScorer {
     try {
       return await this.#scoreWithCorrection(request, responseFormat(citationProviders));
     } catch (error) {
-      if (!this.#endpoint.endsWith("/openai/v1") || !(error instanceof AzureOpenAiRequestError) || error.status !== 400) throw error;
+      if (!this.#endpoint.endsWith("/openai/v1") || !(error instanceof AzureOpenAiRequestError) || error.status !== 400 || !error.unsupportedResponseFormat) throw error;
       return this.#scoreWithCorrection(request, jsonObjectResponseFormat);
     }
   }
@@ -151,7 +153,7 @@ export class AzureOpenAiScorer {
         ]
       })
     });
-    if (!response.ok) throw new AzureOpenAiRequestError(response.status);
+    if (!response.ok) throw new AzureOpenAiRequestError(response.status, await response.text());
     try {
       const payload = await response.json() as { choices?: Array<{ message?: { content?: unknown } }> };
       return parse(payload.choices?.[0]?.message?.content, input.citationProviders);

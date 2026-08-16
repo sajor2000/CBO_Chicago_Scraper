@@ -61,7 +61,7 @@ test("Azure Foundry retries an unsupported strict schema in JSON mode without re
   const requestBodies: string[] = [];
   const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "DeepSeek-V4-Flash", fetch: async (_url, init) => {
     requestBodies.push(String(init?.body));
-    if (requestBodies.length === 1) return new Response("strict schema unsupported", { status: 400 });
+    if (requestBodies.length === 1) return new Response("response_format json_schema is unsupported", { status: 400 });
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ cboEligibility: "likely_cbo", operationalAssessment: "open", evidenceQuality: "medium", citations: ["firecrawl"], suggestedCategory: null, rationale: "Captured evidence supports the advisory." }) } }] }), { status: 200 });
   } });
   const result = await scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] });
@@ -78,6 +78,16 @@ test("Azure Foundry does not retry authentication failures in JSON mode", async 
     return new Response("unauthorized", { status: 401 });
   } });
   await assert.rejects(() => scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] }), /401/);
+  assert.equal(calls, 1);
+});
+
+test("Azure Foundry does not retry unrelated client errors in JSON mode", async () => {
+  let calls = 0;
+  const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "DeepSeek-V4-Flash", fetch: async () => {
+    calls += 1;
+    return new Response("invalid model deployment", { status: 400 });
+  } });
+  await assert.rejects(() => scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] }), /400/);
   assert.equal(calls, 1);
 });
 
