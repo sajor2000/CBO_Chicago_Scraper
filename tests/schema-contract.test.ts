@@ -184,6 +184,8 @@ test("pause preserves an active lease until its fenced completion", () => {
   const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
   assert.match(schema, /state\.status in \('running', 'paused'\)/i);
   assert.match(schema, /when state\.status = 'paused' then 'paused'/i);
+  const staging = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
+  assert.match(staging, /state\.status in \('running', 'paused'\)/i);
   const pause = registry.slice(registry.indexOf("async pause(runId"), registry.indexOf("async resume(runId"));
   assert.doesNotMatch(pause, /run_checkpoints/);
 });

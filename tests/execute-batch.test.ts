@@ -35,7 +35,7 @@ test("execution bounds provider work and passes its lease to candidate staging",
   assert.match(runs, /select claimed\.resource_id, membership\.resource_snapshot_id, claimed\.ordinal, claimed\.lease_token, claimed\.attempt/);
   assert.match(repository, /active_checkpoint/);
   assert.match(repository, /checkpoint\.lease_token = \$8::uuid/);
-  assert.match(repository, /state\.status = 'running'/);
+  assert.match(repository, /state\.status in \('running', 'paused'\)/);
 });
 
 test("provider diagnostics preserve retrieval and Azure failure states", () => {
