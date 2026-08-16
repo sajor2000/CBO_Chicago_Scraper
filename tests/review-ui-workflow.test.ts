@@ -64,6 +64,8 @@ test("operator controls send selected and all-due work to the durable run dashbo
   assert.match(controls, /Run a selected spot check instead/);
   assert.match(controls, /Audit selected/);
   assert.match(controls, /Approved checkpoint budget/);
+  assert.match(controls, /Selected checkpoint budget/);
+  assert.match(controls, /budget: selectedBudget/);
 });
 
 test("operator run controls process one protected checkpoint at a time", () => {
