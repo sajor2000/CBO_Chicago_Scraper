@@ -182,10 +182,10 @@ test("mirror-copy groundwork fences idempotent refresh requests before table-cop
 test("pause preserves an active lease until its fenced completion", () => {
   const schema = migration("011_pause_preserves_checkpoint_lease.sql");
   const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
-  assert.match(schema, /state\.status in \('running', 'paused'\)/i);
+  assert.match(schema, /state\.status in \('queued', 'running', 'paused'\)/i);
   assert.match(schema, /when state\.status = 'paused' then 'paused'/i);
   const staging = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
-  assert.match(staging, /state\.status in \('running', 'paused'\)/i);
+  assert.match(staging, /state\.status in \('queued', 'running', 'paused'\)/i);
   const release = registry.slice(registry.indexOf("async releaseLease(runId"), registry.indexOf("async failCheckpoint(runId"));
   assert.match(release, /status in \('cancelled', 'completed', 'paused'\)/i);
   const pause = registry.slice(registry.indexOf("async pause(runId"), registry.indexOf("async resume(runId"));

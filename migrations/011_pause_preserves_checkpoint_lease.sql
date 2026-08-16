@@ -20,7 +20,7 @@ begin
     and checkpoint.lease_token = target_lease_token
     and checkpoint.state = 'leased'
     and checkpoint.lease_expires_at > now()
-    and state.status in ('running', 'paused')
+    and state.status in ('queued', 'running', 'paused')
   for update of checkpoint;
   if not found then return false; end if;
 
