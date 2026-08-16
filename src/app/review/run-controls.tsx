@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { clampSelectedBudget } from "./selected-budget.ts";
 
 type Resource = { id: string; name: string };
 type LaunchRequest =
@@ -10,6 +11,7 @@ type LaunchRequest =
 export function RunControls({ resources, dueCount }: { resources: Resource[]; dueCount: number }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [budget, setBudget] = useState(dueCount || 1);
+  const [selectedBudget, setSelectedBudget] = useState(1);
   const [message, setMessage] = useState<string>();
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,9 +40,11 @@ export function RunControls({ resources, dueCount }: { resources: Resource[]; du
     }
   };
 
-  const toggle = (id: string) => setSelected((current) => current.includes(id)
-    ? current.filter((value) => value !== id)
-    : current.length < 100 ? [...current, id] : current);
+  const toggle = (id: string) => setSelected((current) => {
+    const next = current.includes(id) ? current.filter((value) => value !== id) : current.length < 100 ? [...current, id] : current;
+    setSelectedBudget((value) => clampSelectedBudget(value, next.length));
+    return next;
+  });
 
   return <section className="pilot-panel" aria-labelledby="audit-title">
     <div>
@@ -71,13 +75,16 @@ export function RunControls({ resources, dueCount }: { resources: Resource[]; du
         <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by organization or location" disabled={busy} />
       </label>
       <p className="selection-count"><strong>{selected.length}</strong> of 100 selected</p>
+      <label className="resource-search">Selected checkpoint budget
+        <input type="number" min="1" max={Math.max(1, selected.length)} value={selectedBudget} onChange={(event) => setSelectedBudget(Number(event.target.value))} disabled={busy || !selected.length} />
+      </label>
       <div className="pilot-resources" role="group" aria-label="Copied resources">
         {visibleResources.map((resource) => <label key={resource.id} className="pilot-resource">
           <input type="checkbox" checked={selected.includes(resource.id)} disabled={busy || (!selected.includes(resource.id) && selected.length >= 100)} onChange={() => toggle(resource.id)} />
           <span>{resource.name}</span>
         </label>)}
       </div>
-      <button type="button" onClick={() => void start({ selection: selected, budget: selected.length }, "Could not start the selected spot check.")} disabled={busy || !selected.length}>
+      <button type="button" onClick={() => void start({ selection: selected, budget: selectedBudget }, "Could not start the selected spot check.")} disabled={busy || !selected.length || selectedBudget < 1 || selectedBudget > selected.length}>
         Audit selected ({selected.length})
       </button>
     </details>

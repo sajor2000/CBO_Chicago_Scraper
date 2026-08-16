@@ -3,6 +3,7 @@ import test from "node:test";
 import { InMemoryReviewRepository, RevisionConflictError, reviewProvenance } from "../src/lib/repositories/review.ts";
 import { readFileSync } from "node:fs";
 import { postReview } from "../src/lib/review/post-review.ts";
+import { clampSelectedBudget } from "../src/app/review/selected-budget.ts";
 
 test("approval stores a field subset and stale decisions fail compare-and-swap", () => {
   const reviews = new InMemoryReviewRepository();
@@ -64,6 +65,14 @@ test("operator controls send selected and all-due work to the durable run dashbo
   assert.match(controls, /Run a selected spot check instead/);
   assert.match(controls, /Audit selected/);
   assert.match(controls, /Approved checkpoint budget/);
+  assert.match(controls, /Selected checkpoint budget/);
+  assert.match(controls, /budget: selectedBudget/);
+});
+
+test("selected checkpoint budget stays within the current selection", () => {
+  assert.equal(clampSelectedBudget(10, 1), 1);
+  assert.equal(clampSelectedBudget(0, 10), 1);
+  assert.equal(clampSelectedBudget(4, 10), 4);
 });
 
 test("operator run controls process one protected checkpoint at a time", () => {
