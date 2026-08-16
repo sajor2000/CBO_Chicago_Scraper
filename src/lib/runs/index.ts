@@ -536,7 +536,7 @@ export class NeonRunRegistry {
         returning run_id
       )
       update review_workspace.run_current_state state
-      set status = case when status in ('cancelled', 'completed') then status else 'queued' end,
+      set status = case when status in ('cancelled', 'completed', 'paused') then status else 'queued' end,
           updated_at = now(), revision = revision + 1
       where state.run_id = $1::uuid and exists (select 1 from released)
     `, [runId, leaseToken]);
