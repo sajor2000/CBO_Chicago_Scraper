@@ -34,7 +34,7 @@ test("route rejects nonterminal eligibility labels before review mutation", asyn
   for (const action of ["edit", "deferred"] as const) {
     const response = await postReview(request(action), dependencies);
     assert.equal(response.status, 400);
-    assert.match((await response.json() as { error: string }).error, /only accompany approval or rejection/i);
+    assert.match((await response.json() as { error: string }).error, /terminal decision/i);
   }
 });
 
@@ -147,4 +147,15 @@ test("not-CBO findings have a dedicated human eligibility review path", () => {
   assert.match(page, /eligibility_review/);
   assert.match(actions, /Confirm not eligible CBO/);
   assert.match(actions, /Keep as eligible CBO/);
+  assert.match(actions, /decide\("eligibility_confirmed", false\)/);
+  assert.match(actions, /decide\("eligibility_confirmed", true\)/);
+});
+
+test("eligibility confirmation never becomes an export approval", () => {
+  const reviews = new InMemoryReviewRepository();
+  reviews.stage({ id: "eligibility", kind: "eligibility_review", proposedValues: { cbo_eligibility: "not_a_cbo" } });
+  const confirmed = reviews.decide({ candidateId: "eligibility", expectedRevision: 1, reviewerSubject: "reviewer-1", action: "eligibility_confirmed", reviewerCboEligibility: false, reason: "Municipal facility, not a CBO." });
+  assert.equal(confirmed.status, "eligibility_confirmed");
+  assert.equal(confirmed.approvedValues, undefined);
+  assert.equal(confirmed.decisions[0]?.cboEligibility, false);
 });

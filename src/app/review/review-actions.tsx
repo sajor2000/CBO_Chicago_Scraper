@@ -33,7 +33,7 @@ export function ReviewActions({
     </section>;
   }
 
-  const decide = async (action: "approved" | "rejected" | "deferred" | "edit" | "confirm_closed", eligibility?: boolean) => {
+  const decide = async (action: "approved" | "rejected" | "deferred" | "edit" | "confirm_closed" | "eligibility_confirmed", eligibility?: boolean) => {
     if (!reason.trim()) return setMessage("Add a brief review reason before deciding.");
     if (action === "approved" && !selected.length) return setMessage("Select at least one field to approve.");
     if (action === "edit" && Object.values(draft).some((value) => !value.trim())) {
@@ -51,7 +51,7 @@ export function ReviewActions({
           action: action === "confirm_closed" ? "edit" : action,
           fields: action === "approved" ? selected : undefined,
           proposedValues: action === "confirm_closed" ? { status: "closed" } : action === "edit" ? draft : undefined,
-          reviewerCboEligibility: action === "approved" || action === "rejected" ? eligibility ?? (cboEligibility === "eligible" ? true : cboEligibility === "not_eligible" ? false : undefined) : undefined,
+          reviewerCboEligibility: action === "approved" || action === "rejected" || action === "eligibility_confirmed" ? eligibility ?? (cboEligibility === "eligible" ? true : cboEligibility === "not_eligible" ? false : undefined) : undefined,
           reason
         })
       });
@@ -125,8 +125,8 @@ export function ReviewActions({
     </fieldset> : null}
     <div className="actions">
       {candidateKind === "eligibility_review" ? <>
-        <button type="button" className="primary-button" disabled={busy || !reason.trim()} onClick={() => void decide("approved", false)}>Confirm not eligible CBO</button>
-        <button type="button" className="reject-button" disabled={busy || !reason.trim()} onClick={() => void decide("rejected", true)}>Keep as eligible CBO</button>
+        <button type="button" className="primary-button" disabled={busy || !reason.trim()} onClick={() => void decide("eligibility_confirmed", false)}>Confirm not eligible CBO</button>
+        <button type="button" className="reject-button" disabled={busy || !reason.trim()} onClick={() => void decide("eligibility_confirmed", true)}>Keep as eligible CBO</button>
         <button type="button" disabled={busy || !reason.trim()} onClick={() => void decide("deferred")}>Defer</button>
       </> : <>
         {candidateKind === "closure_review" && !fields.length ? <button type="button" className="primary-button" disabled={busy || !reason.trim()} onClick={() => void decide("confirm_closed")}>Propose status: closed</button> : null}

@@ -120,7 +120,14 @@ test("CBO eligibility review migration adds only the human-review candidate kind
   const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
   assert.match(schema, /eligibility_review/);
   assert.match(runner, /012_cbo_eligibility_review\.sql/);
-  assert.match(runner, /version in \(4, 9, 10, 11, 12\)/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13\)/);
+});
+
+test("eligibility decisions are not export approvals", () => {
+  const schema = migration("013_eligibility_decision_state.sql");
+  const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
+  assert.match(schema, /eligibility_confirmed/);
+  assert.match(runner, /013_eligibility_decision_state\.sql/);
 });
 
 test("candidate staging serializes concurrent revisions for one resource", () => {
@@ -184,7 +191,7 @@ test("mirror-copy groundwork fences idempotent refresh requests before table-cop
   assert.match(schema, /manifest_id uuid unique references review_workspace\.refresh_manifests/i);
   assert.match(schema, /before delete on review_workspace\.refresh_requests/i);
   assert.match(runner, /010_cbo_mirror_copy\.sql/);
-  assert.match(runner, /version in \(4, 9, 10, 11, 12\)/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13\)/);
 });
 
 test("pause preserves an active lease until its fenced completion", () => {

@@ -15,7 +15,8 @@ export async function postReview(request: Request, dependencies: ReviewPostDepen
     await dependencies.requireWorkspaceRole(userId, "reviewer");
     const body = await request.json() as { candidateId: string; expectedRevision: number; action: CandidateAction | "edit"; fields?: string[]; proposedValues?: Record<string, string>; reason: string; reviewerCboEligibility?: unknown };
     if (body.reviewerCboEligibility !== undefined && typeof body.reviewerCboEligibility !== "boolean") throw new Error("CBO eligibility must be a boolean.");
-    if (body.reviewerCboEligibility !== undefined && body.action !== "approved" && body.action !== "rejected") throw new Error("CBO eligibility can only accompany approval or rejection.");
+    if (body.reviewerCboEligibility !== undefined && body.action !== "approved" && body.action !== "rejected" && body.action !== "eligibility_confirmed") throw new Error("CBO eligibility can only accompany a terminal decision.");
+    if (body.action === "eligibility_confirmed" && body.reviewerCboEligibility === undefined) throw new Error("Eligibility confirmation requires an explicit CBO label.");
     const candidate = body.action === "edit"
       ? await dependencies.supersede({ candidateId: body.candidateId, expectedRevision: body.expectedRevision, proposedValues: body.proposedValues ?? {}, actorSubject: userId, reason: body.reason })
       : await dependencies.decide({ ...body, action: body.action, reviewerSubject: userId, reviewerCboEligibility: body.reviewerCboEligibility });
