@@ -83,6 +83,11 @@ test("review queue mounts operator controls and human-readable candidate rows", 
   assert.match(page, /CalibrationSummary/);
 });
 
+test("seeded-resource picker is scoped to the current reconciled baseline", () => {
+  const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
+  assert.match(repository, /async listSeededResources[\s\S]*refresh_snapshot_memberships[\s\S]*status = 'reconciled'[\s\S]*order by promoted_at desc/);
+});
+
 test("every completed resource has a durable, evidence-linked report surface", () => {
   const reports = readFileSync(new URL("../src/app/review/site-reports.tsx", import.meta.url), "utf8");
   const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");

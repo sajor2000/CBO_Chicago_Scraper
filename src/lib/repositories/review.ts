@@ -335,11 +335,15 @@ export class NeonReviewRepository {
   async listSeededResources(limit = 100): Promise<SeededResourceSummary[]> {
     const rows = await this.#query<{ id: string; name: string }>(`
       select resource.id, ${snapshotNameExpression} as name
-      from review_workspace.resources resource
-      join lateral (
-        select source_payload from review_workspace.resource_snapshots
-        where resource_id = resource.id order by imported_at desc limit 1
-      ) snapshot on true
+      from review_workspace.refresh_snapshot_memberships membership
+      join review_workspace.resources resource on resource.id = membership.resource_id
+      join review_workspace.resource_snapshots snapshot on snapshot.id = membership.resource_snapshot_id
+      where membership.manifest_id = (
+        select id from review_workspace.refresh_manifests
+        where status = 'reconciled'
+        order by promoted_at desc
+        limit 1
+      )
       order by name asc
       limit $1
     `, [Math.max(1, Math.min(limit, 100))]);
