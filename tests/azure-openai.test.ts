@@ -18,10 +18,26 @@ test("Azure OpenAI scorer sends bounded evidence and accepts only structured adv
   assert.equal(result.cboEligibility, "confirmed_cbo");
   assert.equal(result.operationalAssessment, "open");
   assert.equal(result.suggestedCategory, "food_pantry");
-  assert.ok(requestBody.length < 7000);
-  assert.equal(JSON.parse(requestBody).max_completion_tokens, 500);
-  assert.equal(JSON.parse(requestBody).temperature, undefined);
+  const request = JSON.parse(requestBody);
+  const supplied = JSON.parse(request.messages.find((message: { role: string; content: string }) => message.role === "user").content);
+  assert.ok(supplied.evidence.length <= 6000);
+  assert.equal(request.max_completion_tokens, 500);
+  assert.equal(request.temperature, undefined);
+  assert.equal(request.response_format.type, "json_schema");
+  assert.equal(request.response_format.json_schema.strict, true);
   assert.doesNotMatch(requestBody, /do-not-send/);
+});
+
+test("Azure OpenAI scorer retries one malformed structured response", async () => {
+  let calls = 0;
+  const scorer = new AzureOpenAiScorer({ endpoint: "https://example", apiKey: "secret", deployment: "model", fetch: async () => {
+    calls += 1;
+    const content = calls === 1 ? "{}" : JSON.stringify({ geography: 90, organizationType: 80, serviceFit: 75, identity: 88, operationalEvidence: 70, cboEligibility: "confirmed_cbo", operationalAssessment: "open", evidenceQuality: "high", citations: ["firecrawl"], suggestedCategory: null, rationale: "Corroborated." });
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+  } });
+  const result = await scorer.score({ name: "Example", evidence: "official", citationProviders: ["firecrawl"] });
+  assert.equal(calls, 2);
+  assert.equal(result.cboEligibility, "confirmed_cbo");
 });
 
 test("Azure OpenAI audit prompt prohibits tool use and production decisions", async () => {
@@ -44,5 +60,5 @@ test("Azure OpenAI scorer fails closed on malformed responses", async () => {
 
 test("Azure OpenAI scorer rejects citations absent from captured evidence", async () => {
   const scorer = new AzureOpenAiScorer({ endpoint: "https://example", apiKey: "secret", deployment: "model", fetch: async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ geography: 1, organizationType: 1, serviceFit: 1, identity: 1, operationalEvidence: 1, cboEligibility: "likely_cbo", operationalAssessment: "unknown", evidenceQuality: "low", citations: ["invented_provider"], rationale: "Unsupported." }) } }] }), { status: 200 }) });
-  await assert.rejects(() => scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] }), /invalid citations/);
+  await assert.rejects(() => scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] }), /malformed/);
 });

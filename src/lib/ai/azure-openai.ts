@@ -19,6 +19,13 @@ export const CBO_AUDIT_WORLD_PROMPT = `You are a conservative Chicago community-
 
 type Fetch = typeof fetch;
 
+class AzureOpenAiMalformedResponseError extends Error {
+  constructor() {
+    super("Azure OpenAI response is malformed.");
+    this.name = "AzureOpenAiMalformedResponseError";
+  }
+}
+
 const score = (value: unknown): number => {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) throw new Error("Azure OpenAI response contains an invalid score.");
   return value;
@@ -33,7 +40,7 @@ const parse = (content: unknown, citationProviders: readonly string[]): AiScore 
   if (typeof content !== "string") throw new Error("Azure OpenAI response has no structured content.");
   const value = JSON.parse(content) as Record<string, unknown>;
   if (typeof value.rationale !== "string" || value.rationale.length > 1_000) throw new Error("Azure OpenAI response has an invalid rationale.");
-  if (value.suggestedCategory !== undefined && typeof value.suggestedCategory !== "string") throw new Error("Azure OpenAI response has an invalid category.");
+  if (value.suggestedCategory !== undefined && value.suggestedCategory !== null && typeof value.suggestedCategory !== "string") throw new Error("Azure OpenAI response has an invalid category.");
   const providers = new Set(citationProviders);
   if (!Array.isArray(value.citations) || value.citations.some((citation) => typeof citation !== "string" || citation.length > 80 || !providers.has(citation))) throw new Error("Azure OpenAI response has invalid citations.");
   return {
@@ -46,10 +53,29 @@ const parse = (content: unknown, citationProviders: readonly string[]): AiScore 
     operationalAssessment: oneOf(value.operationalAssessment, ["open", "closure_suspected", "unknown"], "operational assessment"),
     evidenceQuality: oneOf(value.evidenceQuality, ["high", "medium", "low"], "evidence quality"),
     citations: value.citations,
-    suggestedCategory: value.suggestedCategory as string | undefined,
+    suggestedCategory: typeof value.suggestedCategory === "string" ? value.suggestedCategory : undefined,
     rationale: value.rationale
   };
 };
+
+const responseFormat = {
+  type: "json_schema",
+  json_schema: {
+    name: "cbo_audit",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        geography: { type: "number" }, organizationType: { type: "number" }, serviceFit: { type: "number" }, identity: { type: "number" }, operationalEvidence: { type: "number" },
+        cboEligibility: { type: "string", enum: ["confirmed_cbo", "likely_cbo", "not_a_cbo", "insufficient_evidence"] },
+        operationalAssessment: { type: "string", enum: ["open", "closure_suspected", "unknown"] }, evidenceQuality: { type: "string", enum: ["high", "medium", "low"] },
+        citations: { type: "array", items: { type: "string" } }, suggestedCategory: { anyOf: [{ type: "string" }, { type: "null" }] }, rationale: { type: "string" }
+      },
+      required: ["geography", "organizationType", "serviceFit", "identity", "operationalEvidence", "cboEligibility", "operationalAssessment", "evidenceQuality", "citations", "suggestedCategory", "rationale"]
+    }
+  }
+} as const;
 
 export class AzureOpenAiScorer {
   #endpoint: string;
@@ -66,21 +92,35 @@ export class AzureOpenAiScorer {
 
   async score(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[] }): Promise<AiScore> {
     const evidence = redactEvidence(input.evidence).slice(0, 6_000);
+    try {
+      return await this.#scoreOnce({ ...input, evidence });
+    } catch (error) {
+      if (!(error instanceof AzureOpenAiMalformedResponseError)) throw error;
+      return this.#scoreOnce({ ...input, evidence, correction: "The previous response was invalid. Return only the required JSON object and use citations only from the supplied evidence." });
+    }
+  }
+
+  async #scoreOnce(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[]; correction?: string }): Promise<AiScore> {
     const response = await this.#fetch(`${this.#endpoint}/openai/deployments/${encodeURIComponent(this.#deployment)}/chat/completions?api-version=2024-10-21`, {
       method: "POST",
       headers: { "api-key": this.#apiKey, "content-type": "application/json" },
       body: JSON.stringify({
         max_completion_tokens: 500,
-        response_format: { type: "json_object" },
+        response_format: responseFormat,
         messages: [
           { role: "system", content: CBO_AUDIT_WORLD_PROMPT },
-          { role: "user", content: JSON.stringify({ name: input.name, address: input.address, evidence }) }
+          { role: "user", content: JSON.stringify({ name: input.name, address: input.address, evidence: input.evidence }) },
+          ...(input.correction ? [{ role: "user" as const, content: input.correction }] : [])
         ]
       })
     });
     if (!response.ok) throw new Error(`Azure OpenAI request failed (${response.status}).`);
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: unknown } }> };
-    return parse(payload.choices?.[0]?.message?.content, input.citationProviders);
+    try {
+      const payload = await response.json() as { choices?: Array<{ message?: { content?: unknown } }> };
+      return parse(payload.choices?.[0]?.message?.content, input.citationProviders);
+    } catch {
+      throw new AzureOpenAiMalformedResponseError();
+    }
   }
 }
 
