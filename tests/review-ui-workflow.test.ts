@@ -66,6 +66,12 @@ test("operator controls send selected and all-due work to the durable run dashbo
   assert.match(controls, /Approved checkpoint budget/);
 });
 
+test("operator run controls process one protected checkpoint at a time", () => {
+  const actions = readFileSync(new URL("../src/app/review/run-actions.tsx", import.meta.url), "utf8");
+  assert.match(actions, /Process next checkpoint/);
+  assert.match(actions, /fetch\(`\/api\/runs\/\$\{runId\}\/execute`, \{ method: "POST" \}\)/);
+});
+
 test("review queue mounts operator controls and human-readable candidate rows", () => {
   const page = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
   assert.match(page, /RunControls/);

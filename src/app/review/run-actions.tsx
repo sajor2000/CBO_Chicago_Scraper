@@ -29,6 +29,24 @@ export function RunActions({ runId, status, resumeHeadroom }: { runId: string; s
     }
   };
 
+  const executeNext = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/runs/${runId}/execute`, { method: "POST" });
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) {
+        setMessage(body.error ?? "The next checkpoint could not be processed.");
+        return;
+      }
+      window.location.reload();
+    } catch {
+      setMessage("The next checkpoint could not be processed. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (status === "completed" || status === "cancelled" || status === "failed") return null;
   return <section className="actions" aria-label="Audit run controls">
     {status === "paused" ? <>
@@ -36,7 +54,10 @@ export function RunActions({ runId, status, resumeHeadroom }: { runId: string; s
         <input type="number" min="0" max={resumeHeadroom} value={additionalBudget} onChange={(event) => setAdditionalBudget(Number(event.target.value))} disabled={busy} />
       </label>
       <button type="button" className="primary-button" onClick={() => void mutate("resume")} disabled={busy || additionalBudget < 0 || additionalBudget > resumeHeadroom}>Resume audit</button>
-    </> : <button type="button" onClick={() => void mutate("pause")} disabled={busy}>Pause audit</button>}
+    </> : <>
+      <button type="button" className="primary-button" onClick={() => void executeNext()} disabled={busy}>Process next checkpoint</button>
+      <button type="button" onClick={() => void mutate("pause")} disabled={busy}>Pause audit</button>
+    </>}
     <button type="button" className="reject-button" onClick={() => void mutate("cancel")} disabled={busy}>Cancel run</button>
     {message ? <p role="status">{message}</p> : null}
   </section>;
