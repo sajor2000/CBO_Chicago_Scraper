@@ -109,10 +109,14 @@ export class AzureOpenAiScorer {
   }
 
   async #scoreOnce(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[]; correction?: string }): Promise<AiScore> {
-    const response = await this.#fetch(`${this.#endpoint}/openai/deployments/${encodeURIComponent(this.#deployment)}/chat/completions?api-version=2024-10-21`, {
+    const foundryV1 = this.#endpoint.endsWith("/openai/v1");
+    const response = await this.#fetch(foundryV1
+      ? `${this.#endpoint}/chat/completions`
+      : `${this.#endpoint}/openai/deployments/${encodeURIComponent(this.#deployment)}/chat/completions?api-version=2024-10-21`, {
       method: "POST",
       headers: { "api-key": this.#apiKey, "content-type": "application/json" },
       body: JSON.stringify({
+        ...(foundryV1 ? { model: this.#deployment } : {}),
         max_completion_tokens: 500,
         response_format: responseFormat,
         messages: [

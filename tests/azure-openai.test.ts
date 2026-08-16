@@ -40,6 +40,19 @@ test("Azure OpenAI scorer retries one malformed structured response", async () =
   assert.equal(result.cboEligibility, "confirmed_cbo");
 });
 
+test("Azure Foundry v1 deployments receive the model in the request body", async () => {
+  let requestUrl = "";
+  let requestBody = "";
+  const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "DeepSeek-V4-Flash", fetch: async (url, init) => {
+    requestUrl = String(url);
+    requestBody = String(init?.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ cboEligibility: "likely_cbo", operationalAssessment: "open", evidenceQuality: "medium", citations: ["official"], suggestedCategory: null, rationale: "Official evidence describes a pantry." }) } }] }), { status: 200 });
+  } });
+  await scorer.score({ name: "Example", evidence: "official", citationProviders: ["official"] });
+  assert.equal(requestUrl, "https://example.services.ai.azure.com/openai/v1/chat/completions");
+  assert.equal(JSON.parse(requestBody).model, "DeepSeek-V4-Flash");
+});
+
 test("Azure OpenAI audit prompt prohibits tool use and production decisions", async () => {
   let requestBody = "";
   const scorer = new AzureOpenAiScorer({ endpoint: "https://example", apiKey: "secret", deployment: "model", fetch: async (_url, init) => {
