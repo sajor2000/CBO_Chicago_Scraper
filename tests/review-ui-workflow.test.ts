@@ -102,6 +102,8 @@ test("every completed resource has a durable, evidence-linked report surface", (
   assert.match(reports, /Review possible closure/);
   assert.match(reports, /Verification incomplete/);
   assert.match(reports, /View evidence and reasoning/);
+  assert.match(reports, /evidence-facts/);
+  assert.match(reports, /evidence-excerpt/);
   assert.match(registry, /report_delta->'siteReport'/);
   assert.match(registry, /run_checkpoint_outcomes/);
 });

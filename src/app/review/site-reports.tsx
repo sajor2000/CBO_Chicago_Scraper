@@ -12,6 +12,7 @@ const outcomeCopy: Record<CheckpointOutcome, { label: string; note: string; tone
 };
 
 const label = (value: string) => value.replace(/_/g, " ");
+const compact = (value: string) => value.replace(/\s+/g, " ").replace(/[`*_>#]/g, "").trim().slice(0, 500);
 const safeUrl = (value?: string) => {
   if (!value) return undefined;
   try {
@@ -72,7 +73,10 @@ export function SiteReports({ reports }: { reports: SiteVerificationReport[] }) 
                   return <li key={`${observation.provider}-${observation.observedAt}-${index}`}>
                     <strong>{label(observation.provider)}</strong> — {label(observation.state)}
                     {source ? <> · <a href={source} target="_blank" rel="noreferrer">open source</a></> : null}
-                    {observation.excerpt ? <p>{observation.excerpt}</p> : null}
+                    {observation.values && Object.keys(observation.values).length ? <dl className="evidence-facts">
+                      {Object.entries(observation.values).filter(([, value]) => value).map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{value}</dd></div>)}
+                    </dl> : null}
+                    {observation.excerpt ? <p className="evidence-excerpt">{compact(observation.excerpt)}</p> : null}
                   </li>;
                 })}
               </ul> : <p>No detailed source capture was retained for this older run.</p>}
