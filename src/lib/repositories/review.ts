@@ -507,7 +507,7 @@ export class NeonReviewRepository {
         cross join locked
         where active_checkpoint.cycle_membership_id is null
           and snapshots.id = (
-            select linked.resource_snapshot_id
+            select linked.id
             from review_workspace.resource_snapshot_receipts receipt
             join review_workspace.resource_snapshots linked on linked.id = receipt.resource_snapshot_id
             where linked.resource_id = $1::uuid order by linked.imported_at desc limit 1

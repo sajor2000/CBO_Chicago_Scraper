@@ -197,6 +197,8 @@ test("candidate staging binds the checkpoint membership snapshot instead of late
   const method = repository.slice(repository.indexOf("async stageVerification"));
   assert.match(method, /checkpoint\.cycle_membership_id/i);
   assert.match(method, /cycle_memberships/i);
+  assert.match(method, /select linked\.id\s+from review_workspace\.resource_snapshot_receipts/i);
+  assert.doesNotMatch(method, /select linked\.resource_snapshot_id/i);
   assert.doesNotMatch(method, /order by snapshots\.imported_at desc limit 1/i);
 });
 
