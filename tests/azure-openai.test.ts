@@ -57,18 +57,16 @@ test("Azure Foundry v1 deployments receive the model in the request body", async
   assert.equal(JSON.parse(requestBody).model, "DeepSeek-V4-Flash");
 });
 
-test("Azure Foundry retries an unsupported strict schema in JSON mode without relaxing validation", async () => {
+test("Azure Foundry DeepSeek uses JSON mode without relaxing validation", async () => {
   const requestBodies: string[] = [];
   const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "DeepSeek-V4-Flash", fetch: async (_url, init) => {
     requestBodies.push(String(init?.body));
-    if (requestBodies.length === 1) return new Response("response_format json_schema is unsupported", { status: 400 });
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ cboEligibility: "likely_cbo", operationalAssessment: "open", evidenceQuality: "medium", citations: ["firecrawl"], suggestedCategory: null, rationale: "Captured evidence supports the advisory." }) } }] }), { status: 200 });
   } });
   const result = await scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] });
   assert.equal(result.cboEligibility, "likely_cbo");
-  assert.equal(requestBodies.length, 2);
-  assert.equal(JSON.parse(requestBodies[0]).response_format.type, "json_schema");
-  assert.deepEqual(JSON.parse(requestBodies[1]).response_format, { type: "json_object" });
+  assert.equal(requestBodies.length, 1);
+  assert.deepEqual(JSON.parse(requestBodies[0]).response_format, { type: "json_object" });
 });
 
 test("Azure Foundry does not retry authentication failures in JSON mode", async () => {
@@ -81,14 +79,17 @@ test("Azure Foundry does not retry authentication failures in JSON mode", async 
   assert.equal(calls, 1);
 });
 
-test("Azure Foundry does not retry unrelated client errors in JSON mode", async () => {
+test("Azure Foundry non-DeepSeek deployments retain strict JSON schema", async () => {
   let calls = 0;
-  const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "DeepSeek-V4-Flash", fetch: async () => {
+  let requestBody = "";
+  const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "gpt-4.1", fetch: async (_url, init) => {
     calls += 1;
-    return new Response("invalid model deployment", { status: 400 });
+    requestBody = String(init?.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ cboEligibility: "insufficient_evidence", operationalAssessment: "unknown", evidenceQuality: "low", citations: [], suggestedCategory: null, rationale: "No corroborated source." }) } }] }), { status: 200 });
   } });
-  await assert.rejects(() => scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] }), /400/);
+  await scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] });
   assert.equal(calls, 1);
+  assert.equal(JSON.parse(requestBody).response_format.type, "json_schema");
 });
 
 test("Azure OpenAI constrains citations to deduplicated captured providers", async () => {

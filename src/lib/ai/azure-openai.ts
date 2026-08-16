@@ -39,18 +39,6 @@ class AzureOpenAiMalformedResponseError extends Error {
   }
 }
 
-class AzureOpenAiRequestError extends Error {
-  readonly status: number;
-  readonly unsupportedResponseFormat: boolean;
-
-  constructor(status: number, responseBody = "") {
-    super(`Azure OpenAI request failed (${status}).`);
-    this.name = "AzureOpenAiRequestError";
-    this.status = status;
-    this.unsupportedResponseFormat = /\b(response_format|response format|json_schema|json schema|structured output)\b/i.test(responseBody);
-  }
-}
-
 const oneOf = <T extends string>(value: unknown, options: readonly T[], label: string): T => {
   if (typeof value !== "string" || !options.includes(value as T)) throw new Error(`Azure OpenAI response has an invalid ${label}.`);
   return value as T;
@@ -118,12 +106,11 @@ export class AzureOpenAiScorer {
     if (!citationProviders.length) return { cboEligibility: "insufficient_evidence", operationalAssessment: "unknown", evidenceQuality: "low", citations: [], rationale: "No captured evidence providers were available for an AI advisory." };
     const evidence = redactEvidence(input.evidence).slice(0, 6_000);
     const request = { ...input, citationProviders, evidence };
-    try {
-      return await this.#scoreWithCorrection(request, responseFormat(citationProviders));
-    } catch (error) {
-      if (!this.#endpoint.endsWith("/openai/v1") || !(error instanceof AzureOpenAiRequestError) || error.status !== 400 || !error.unsupportedResponseFormat) throw error;
-      return this.#scoreWithCorrection(request, jsonObjectResponseFormat);
-    }
+    return this.#scoreWithCorrection(request, this.#responseFormat(citationProviders));
+  }
+
+  #responseFormat(citationProviders: readonly string[]): ResponseFormat {
+    return this.#endpoint.endsWith("/openai/v1") && this.#deployment.toLowerCase().includes("deepseek") ? jsonObjectResponseFormat : responseFormat(citationProviders);
   }
 
   async #scoreWithCorrection(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[] }, format: ResponseFormat): Promise<AiScore> {
@@ -153,7 +140,7 @@ export class AzureOpenAiScorer {
         ]
       })
     });
-    if (!response.ok) throw new AzureOpenAiRequestError(response.status, await response.text());
+    if (!response.ok) throw new Error(`Azure OpenAI request failed (${response.status}).`);
     try {
       const payload = await response.json() as { choices?: Array<{ message?: { content?: unknown } }> };
       return parse(payload.choices?.[0]?.message?.content, input.citationProviders);
