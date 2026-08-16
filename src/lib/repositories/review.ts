@@ -25,7 +25,7 @@ export interface ReviewCandidate {
   revision: number;
   status: CandidateStatus;
   resourceName?: string;
-  kind?: "update" | "closure_review" | "new_resource";
+  kind?: "update" | "closure_review" | "new_resource" | "eligibility_review";
   proposedValues: FieldValues;
   beforeValues?: FieldValues;
   approvedValues?: FieldValues;
@@ -153,7 +153,7 @@ type CandidateRow = {
   revision: number;
   status: "staged" | "deferred" | "rejected" | "approved_for_future_export";
   resource_name: string | null;
-  kind: "update" | "closure_review" | "new_resource" | null;
+  kind: "update" | "closure_review" | "new_resource" | "eligibility_review" | null;
   proposed_values: FieldValues;
   before_values: FieldValues;
   approved_field_paths: string[];
@@ -469,7 +469,7 @@ export class NeonReviewRepository {
     resourceId: string;
     runId: string;
     leaseToken: string;
-    kind: "update" | "closure_review" | "new_resource";
+    kind: "update" | "closure_review" | "new_resource" | "eligibility_review";
     beforeValues: FieldValues;
     proposedValues: FieldValues;
     observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: unknown }>;

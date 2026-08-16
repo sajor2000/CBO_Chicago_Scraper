@@ -138,3 +138,11 @@ test("review queue accepts bounded filters and detail includes human decision hi
   assert.match(repository, /provenance->'reviewerEdit'/);
   assert.match(repository, /reviewer_cbo_eligibility/);
 });
+
+test("not-CBO findings have a dedicated human eligibility review path", () => {
+  const page = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
+  const actions = readFileSync(new URL("../src/app/review/review-actions.tsx", import.meta.url), "utf8");
+  assert.match(page, /eligibility_review/);
+  assert.match(actions, /Confirm not eligible CBO/);
+  assert.match(actions, /Keep as eligible CBO/);
+});

@@ -6,7 +6,7 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-export type CandidateKind = "update" | "new_resource" | "closure_review";
+export type CandidateKind = "update" | "new_resource" | "closure_review" | "eligibility_review";
 export type ReviewDecision = "approved" | "rejected" | "deferred";
 export type PublishOutcome = "published" | "failed" | "rolled_back";
 export type RunMode = "manual_selected" | "manual_full_cycle" | "discovery_only" | "scheduled_cycle";

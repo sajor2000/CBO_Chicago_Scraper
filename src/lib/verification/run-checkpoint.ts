@@ -4,7 +4,7 @@ import type { RunReport } from "../runs/index.ts";
 import { verifyResource, type AiAdvisory, type ReferenceResource, type VerificationResult } from "./index.ts";
 
 export type VerificationStage = (input: {
-  kind: "update" | "closure_review";
+  kind: "update" | "closure_review" | "eligibility_review";
   beforeValues: Record<string, string>;
   proposedValues: Record<string, string>;
   observations: CapturedObservation[];
@@ -26,21 +26,22 @@ export async function processVerificationCheckpoint(input: {
 }): Promise<{ result: VerificationResult; report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">>; outcome: CheckpointOutcome }> {
   const result = verifyResource({ resource: input.resource, observations: input.observations, advisory: input.advisory });
   const report = {
-    candidatesStaged: result.state === "candidate_update" || result.state === "conflict" ? 1 : 0,
+    candidatesStaged: result.state === "candidate_update" || result.state === "conflict" || (result.state === "no_change" && result.advisory?.cboEligibility === "not_a_cbo") ? 1 : 0,
     conflicts: result.state === "conflict" ? 1 : 0,
     unableToVerify: result.state === "unable_to_verify" ? 1 : 0,
     providerFailures: result.observations.filter((observation) => observation.state !== "success" && observation.state !== "no_result").length
   };
-  if (result.state === "candidate_update" || result.state === "conflict") {
+  const eligibilityReview = result.state === "no_change" && result.advisory?.cboEligibility === "not_a_cbo";
+  if (result.state === "candidate_update" || result.state === "conflict" || eligibilityReview) {
     await input.stage({
-      kind: result.state === "conflict" ? "closure_review" : "update",
-      beforeValues: Object.fromEntries(result.diffs.map((diff) => [diff.field, diff.before ?? ""])),
-      proposedValues: Object.fromEntries(Object.entries(result.proposedValues).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
+      kind: eligibilityReview ? "eligibility_review" : result.state === "conflict" ? "closure_review" : "update",
+      beforeValues: eligibilityReview ? { cbo_eligibility: "not assessed" } : Object.fromEntries(result.diffs.map((diff) => [diff.field, diff.before ?? ""])),
+      proposedValues: eligibilityReview ? { cbo_eligibility: "not a CBO" } : Object.fromEntries(Object.entries(result.proposedValues).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
       observations: [...result.observations],
       advisory: result.advisory
     });
   }
-  const outcome: CheckpointOutcome = result.state === "candidate_update" ? "candidate_staged"
+  const outcome: CheckpointOutcome = result.state === "candidate_update" || eligibilityReview ? "candidate_staged"
     : result.state === "conflict" ? "conflict"
       : result.state === "unable_to_verify" ? "unable_to_verify"
         : report.providerFailures ? "provider_failure" : "verified_no_change";
