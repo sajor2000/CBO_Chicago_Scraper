@@ -89,6 +89,7 @@ test("production schedule remains one secured checkpoint per cron invocation", (
   const runbook = readFileSync(new URL("../docs/ops/operator-runbook.md", import.meta.url), "utf8");
   assert.match(config, /"path": "\/api\/cron"/);
   assert.match(config, /"schedule": "\*\/5 \* \* \* \*"/);
-  assert.match(runbook, /one-resource manual canary/);
+  assert.match(runbook, /ten-resource manual canary/);
+  assert.match(runbook, /budget one/);
   assert.match(runbook, /20%/);
 });

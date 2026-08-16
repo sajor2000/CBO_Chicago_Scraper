@@ -67,7 +67,7 @@ const parse = (content: unknown, citationProviders: readonly string[]): AiScore 
   };
 };
 
-const responseFormat = {
+const responseFormat = (citationProviders: readonly string[]) => ({
   type: "json_schema",
   json_schema: {
     name: "cbo_audit",
@@ -78,12 +78,12 @@ const responseFormat = {
       properties: {
         cboEligibility: { type: "string", enum: ["confirmed_cbo", "likely_cbo", "not_a_cbo", "insufficient_evidence"] },
         operationalAssessment: { type: "string", enum: ["open", "closure_suspected", "unknown"] }, evidenceQuality: { type: "string", enum: ["high", "medium", "low"] },
-        citations: { type: "array", maxItems: 5, uniqueItems: true, items: { type: "string" } }, suggestedCategory: { anyOf: [{ type: "string", enum: categoryCodes }, { type: "null" }] }, rationale: { type: "string", minLength: 1, maxLength: 600 }
+        citations: { type: "array", items: { type: "string", enum: citationProviders } }, suggestedCategory: { anyOf: [{ type: "string", enum: categoryCodes }, { type: "null" }] }, rationale: { type: "string" }
       },
       required: ["cboEligibility", "operationalAssessment", "evidenceQuality", "citations", "suggestedCategory", "rationale"]
     }
   }
-} as const;
+} as const);
 
 export class AzureOpenAiScorer {
   #endpoint: string;
@@ -99,22 +99,28 @@ export class AzureOpenAiScorer {
   }
 
   async score(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[] }): Promise<AiScore> {
+    const citationProviders = [...new Set(input.citationProviders)];
+    if (!citationProviders.length) return { cboEligibility: "insufficient_evidence", operationalAssessment: "unknown", evidenceQuality: "low", citations: [], rationale: "No captured evidence providers were available for an AI advisory." };
     const evidence = redactEvidence(input.evidence).slice(0, 6_000);
     try {
-      return await this.#scoreOnce({ ...input, evidence });
+      return await this.#scoreOnce({ ...input, citationProviders, evidence });
     } catch (error) {
       if (!(error instanceof AzureOpenAiMalformedResponseError)) throw error;
-      return this.#scoreOnce({ ...input, evidence, correction: "The previous response was invalid. Return only the required JSON object and use citations only from the supplied evidence." });
+      return this.#scoreOnce({ ...input, citationProviders, evidence, correction: "The previous response was invalid. Return only the required JSON object and use citations only from the supplied evidence." });
     }
   }
 
   async #scoreOnce(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[]; correction?: string }): Promise<AiScore> {
-    const response = await this.#fetch(`${this.#endpoint}/openai/deployments/${encodeURIComponent(this.#deployment)}/chat/completions?api-version=2024-10-21`, {
+    const foundryV1 = this.#endpoint.endsWith("/openai/v1");
+    const response = await this.#fetch(foundryV1
+      ? `${this.#endpoint}/chat/completions`
+      : `${this.#endpoint}/openai/deployments/${encodeURIComponent(this.#deployment)}/chat/completions?api-version=2024-10-21`, {
       method: "POST",
       headers: { "api-key": this.#apiKey, "content-type": "application/json" },
       body: JSON.stringify({
+        ...(foundryV1 ? { model: this.#deployment } : {}),
         max_completion_tokens: 500,
-        response_format: responseFormat,
+        response_format: responseFormat(input.citationProviders),
         messages: [
           { role: "system", content: CBO_AUDIT_WORLD_PROMPT },
           { role: "user", content: JSON.stringify({ name: input.name, address: input.address, evidence: input.evidence }) },

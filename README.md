@@ -45,7 +45,7 @@ The checked-in five-minute Vercel Cron schedule invokes one checkpoint for the m
 | Official-site retrieval | Firecrawl v2 | Public website scrape; bounded Interact fallback only when configured |
 | Place corroboration | Google Places API (New) | Name, address, phone, URL, and business-status evidence |
 | Discovery | Tavily, with trusted-directory/IRS seams | Discovery and corroboration only; never auto-insert or auto-close |
-| Advisory AI | Azure OpenAI (`gpt-5.6-sol` deployment) | Structured, bounded category/rationale suggestion only |
+| Advisory AI | Azure Foundry (`DeepSeek-V4-Flash`, pending canary) | Structured, bounded category/rationale suggestion only |
 | Tests | Node test runner + TypeScript | Contract, workflow, provider, migration, and authorization coverage |
 
 ## Safety model
@@ -102,9 +102,9 @@ npm run build   # Production Next.js build
 1. Apply migrations `001`–`006`, then the explicit `007` live-verification and `008` reviewer-eligibility migrations, to the **dedicated** Neon workspace only.
 2. Profile/import the current CBO/WIC source data and verify the count-only baseline receipt reconciles.
 3. Grant Clerk `reviewer` and `operator` roles in `review_workspace.reviewer_access`.
-4. Configure provider secrets in Vercel and run a one-record manual pilot from `/review`.
+4. An authorized operator verifies production-only provider access and rotation/revocation controls, then configures the candidate in Vercel Production for the canary.
 5. Review the evidence and candidate UX before widening the batch.
-6. Run the one-resource manual canary, then the documented 10-checkpoint canary. Stop on the runbook thresholds before relying on the guarded production Cron schedule.
+6. Run the documented ten-resource canary one checkpoint at a time. Stop on the runbook thresholds before retaining the candidate configuration or relying on the guarded production Cron schedule.
 7. Build/test the manual Azure patch handoff only after the Azure schema/key/version contract and a non-production target are available.
 
 ## Cursor handoff
