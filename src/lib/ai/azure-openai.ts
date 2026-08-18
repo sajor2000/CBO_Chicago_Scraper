@@ -110,7 +110,7 @@ export class AzureOpenAiScorer {
   }
 
   #responseFormat(citationProviders: readonly string[]): ResponseFormat {
-    return this.#endpoint.endsWith("/openai/v1") && this.#deployment.toLowerCase().includes("deepseek") ? jsonObjectResponseFormat : responseFormat(citationProviders);
+    return this.#endpoint.endsWith("/openai/v1") ? jsonObjectResponseFormat : responseFormat(citationProviders);
   }
 
   async #scoreWithCorrection(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[] }, format: ResponseFormat): Promise<AiScore> {
