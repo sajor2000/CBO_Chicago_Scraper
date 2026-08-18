@@ -25,7 +25,7 @@ For operationalAssessment, use open only when supplied evidence indicates the li
 For evidenceQuality, use high only for two or more corroborating sources, medium for one credible but incomplete source, and low for missing, conflicting, blocked, or weak evidence.
 
 # Citations and category
-citations must contain only exact provider names present in the supplied evidence. Cite every decisive assessment; use [] only when all assessments are insufficient_evidence, unknown, and low. suggestedCategory must be one approved code or null; use null unless the supplied evidence supports a category.
+citations must contain only exact provider names from the supplied citationProviders list. Cite every decisive assessment; use [] only when all assessments are insufficient_evidence, unknown, and low. suggestedCategory must be one approved code or null; use null unless the supplied evidence supports a category.
 
 # Output
 Return only the required JSON object. Keep rationale factual, concise, and limited to supplied evidence.`;
@@ -85,6 +85,9 @@ const responseFormat = (citationProviders: readonly string[]) => ({
   }
 } as const);
 
+const jsonObjectResponseFormat = { type: "json_object" } as const;
+type ResponseFormat = ReturnType<typeof responseFormat> | typeof jsonObjectResponseFormat;
+
 export class AzureOpenAiScorer {
   #endpoint: string;
   #apiKey: string;
@@ -102,15 +105,24 @@ export class AzureOpenAiScorer {
     const citationProviders = [...new Set(input.citationProviders)];
     if (!citationProviders.length) return { cboEligibility: "insufficient_evidence", operationalAssessment: "unknown", evidenceQuality: "low", citations: [], rationale: "No captured evidence providers were available for an AI advisory." };
     const evidence = redactEvidence(input.evidence).slice(0, 6_000);
+    const request = { ...input, citationProviders, evidence };
+    return this.#scoreWithCorrection(request, this.#responseFormat(citationProviders));
+  }
+
+  #responseFormat(citationProviders: readonly string[]): ResponseFormat {
+    return this.#endpoint.endsWith("/openai/v1") ? jsonObjectResponseFormat : responseFormat(citationProviders);
+  }
+
+  async #scoreWithCorrection(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[] }, format: ResponseFormat): Promise<AiScore> {
     try {
-      return await this.#scoreOnce({ ...input, citationProviders, evidence });
+      return await this.#scoreOnce(input, format);
     } catch (error) {
       if (!(error instanceof AzureOpenAiMalformedResponseError)) throw error;
-      return this.#scoreOnce({ ...input, citationProviders, evidence, correction: "The previous response was invalid. Return only the required JSON object and use citations only from the supplied evidence." });
+      return this.#scoreOnce({ ...input, correction: "The previous response was invalid. Return only the required JSON object and use citations only from the supplied citationProviders list." }, format);
     }
   }
 
-  async #scoreOnce(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[]; correction?: string }): Promise<AiScore> {
+  async #scoreOnce(input: { name: string; address?: string; evidence: string; citationProviders: readonly string[]; correction?: string }, format: ResponseFormat): Promise<AiScore> {
     const foundryV1 = this.#endpoint.endsWith("/openai/v1");
     const response = await this.#fetch(foundryV1
       ? `${this.#endpoint}/chat/completions`
@@ -120,10 +132,10 @@ export class AzureOpenAiScorer {
       body: JSON.stringify({
         ...(foundryV1 ? { model: this.#deployment } : {}),
         max_completion_tokens: 500,
-        response_format: responseFormat(input.citationProviders),
+        response_format: format,
         messages: [
           { role: "system", content: CBO_AUDIT_WORLD_PROMPT },
-          { role: "user", content: JSON.stringify({ name: input.name, address: input.address, evidence: input.evidence }) },
+          { role: "user", content: JSON.stringify({ name: input.name, address: input.address, evidence: input.evidence, citationProviders: input.citationProviders }) },
           ...(input.correction ? [{ role: "user" as const, content: input.correction }] : [])
         ]
       })

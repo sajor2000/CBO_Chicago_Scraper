@@ -383,6 +383,7 @@ a:hover { color: #085853; }
 .report-detail { display: grid; gap: var(--space-3); padding: 0 var(--space-4) var(--space-4); }
 .report-detail p, .report-detail ul { margin: 0; }
 .provider-warning { padding: var(--space-3); background: var(--danger-soft); border-radius: var(--radius); }
+.identity-warning { margin-top: var(--space-2) !important; color: var(--danger); }
 .review-link { font-weight: 700; }
 
 .empty-report {
@@ -442,6 +443,8 @@ a:hover { color: #085853; }
 .evidence-facts dt { color: var(--ink-muted); font-size: 0.75rem; text-transform: capitalize; }
 .evidence-facts dd { margin: 0; overflow-wrap: anywhere; }
 .evidence-excerpt { color: var(--ink-muted); line-height: 1.5; overflow-wrap: anywhere; }
+.evidence-excerpt summary { cursor: pointer; font-weight: 600; }
+.evidence-excerpt p { margin-top: var(--space-2) !important; }
 
 .review-actions {
   margin-top: var(--space-6);

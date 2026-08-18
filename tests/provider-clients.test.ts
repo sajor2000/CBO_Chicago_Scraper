@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatAuditEvidence } from "../src/lib/providers/hosted-evidence.ts";
+import { formatAuditEvidence, observationsForScoring } from "../src/lib/providers/hosted-evidence.ts";
 import { ExaClient, FirecrawlClient, GooglePlacesClient, IrsClient, TavilyClient, TrustedDirectoryClient } from "../src/lib/providers/index.ts";
 
 test("Firecrawl uses a bounded v2 scrape request", async () => {
@@ -105,4 +105,12 @@ test("GPT audit input retains bounded structured provider evidence", () => {
   assert.equal(parsed[1]?.excerpt?.length, 300);
   assert.ok(evidence.length <= 6_000);
   assert.doesNotThrow(() => JSON.parse(formatAuditEvidence(Array.from({ length: 6 }, () => ({ provider: "google_places" as const, state: "success" as const, observedAt: "2026-08-13T00:00:00Z", excerpt: "x".repeat(500) })) )));
+});
+
+test("a mismatched Google result is not sent to the AI scorer", () => {
+  const observations = observationsForScoring({ id: "r1", name: "Salvation Army Head Start", address: "845 W 69th St" }, [
+    { provider: "google_places", state: "success", observedAt: "2026-08-13T00:00:00Z", values: { name: "Kennedy King College Child Development Center", address: "710 W 65th St", businessStatus: "open" } },
+    { provider: "firecrawl", state: "success", observedAt: "2026-08-13T00:00:00Z", excerpt: "Head Start" }
+  ]);
+  assert.deepEqual(observations.map(({ provider }) => provider), ["firecrawl"]);
 });

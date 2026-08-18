@@ -20,6 +20,7 @@ test("Azure OpenAI scorer sends bounded evidence and accepts only structured adv
   const request = JSON.parse(requestBody);
   const supplied = JSON.parse(request.messages.find((message: { role: string; content: string }) => message.role === "user").content);
   assert.ok(supplied.evidence.length <= 6000);
+  assert.deepEqual(supplied.citationProviders, ["firecrawl", "google_places"]);
   assert.equal(request.max_completion_tokens, 500);
   assert.equal(request.temperature, undefined);
   assert.equal(request.response_format.type, "json_schema");
@@ -54,6 +55,41 @@ test("Azure Foundry v1 deployments receive the model in the request body", async
   await scorer.score({ name: "Example", evidence: "official", citationProviders: ["official"] });
   assert.equal(requestUrl, "https://example.services.ai.azure.com/openai/v1/chat/completions");
   assert.equal(JSON.parse(requestBody).model, "DeepSeek-V4-Flash");
+});
+
+test("Azure Foundry DeepSeek uses JSON mode without relaxing validation", async () => {
+  const requestBodies: string[] = [];
+  const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "DeepSeek-V4-Flash", fetch: async (_url, init) => {
+    requestBodies.push(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ cboEligibility: "likely_cbo", operationalAssessment: "open", evidenceQuality: "medium", citations: ["firecrawl"], suggestedCategory: null, rationale: "Captured evidence supports the advisory." }) } }] }), { status: 200 });
+  } });
+  const result = await scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] });
+  assert.equal(result.cboEligibility, "likely_cbo");
+  assert.equal(requestBodies.length, 1);
+  assert.deepEqual(JSON.parse(requestBodies[0]).response_format, { type: "json_object" });
+});
+
+test("Azure Foundry does not retry authentication failures in JSON mode", async () => {
+  let calls = 0;
+  const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "DeepSeek-V4-Flash", fetch: async () => {
+    calls += 1;
+    return new Response("unauthorized", { status: 401 });
+  } });
+  await assert.rejects(() => scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] }), /401/);
+  assert.equal(calls, 1);
+});
+
+test("Azure Foundry deployment aliases use compatible JSON mode", async () => {
+  let calls = 0;
+  let requestBody = "";
+  const scorer = new AzureOpenAiScorer({ endpoint: "https://example.services.ai.azure.com/openai/v1", apiKey: "secret", deployment: "production-grader", fetch: async (_url, init) => {
+    calls += 1;
+    requestBody = String(init?.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ cboEligibility: "insufficient_evidence", operationalAssessment: "unknown", evidenceQuality: "low", citations: [], suggestedCategory: null, rationale: "No corroborated source." }) } }] }), { status: 200 });
+  } });
+  await scorer.score({ name: "Example", evidence: "text", citationProviders: ["firecrawl"] });
+  assert.equal(calls, 1);
+  assert.deepEqual(JSON.parse(requestBody).response_format, { type: "json_object" });
 });
 
 test("Azure OpenAI constrains citations to deduplicated captured providers", async () => {

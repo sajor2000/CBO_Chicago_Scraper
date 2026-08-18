@@ -103,7 +103,7 @@ export const verifyResource = (input: {
     return { ...base, state: "potential_new_resource", proposedValues: input.lead.values ?? {}, reasons: ["Trusted directory lead did not match the known resource identity."] };
   }
 
-  const googleClosed = observations.some((observation) => observation.provider === "google_places" && observation.values?.businessStatus === "closed");
+  const googleClosed = observations.some((observation) => observation.provider === "google_places" && observation.values?.businessStatus === "closed" && (!observation.values.name || matchesIdentity(resource, observation.values)));
   if (googleClosed) {
     return { ...base, state: "conflict", reasons: ["Google closure is corroboration only and cannot stage a closed status."] };
   }
