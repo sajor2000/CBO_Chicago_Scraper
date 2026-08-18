@@ -1,9 +1,14 @@
 import { azureOpenAiScorerFromEnv, CBO_AUDIT_PROMPT_VERSION } from "../ai/azure-openai.ts";
 import type { CapturedObservation } from "../retrieval/types.ts";
-import type { ReferenceResource } from "../verification/index.ts";
+import { matchesIdentity, type ReferenceResource } from "../verification/index.ts";
 import { ExaClient, FirecrawlClient, GooglePlacesClient, IrsClient, TavilyClient, TrustedDirectoryClient } from "./index.ts";
 
 const bounded = (value: string | undefined, maximum: number) => value?.slice(0, maximum);
+
+/** Google Text Search can return a nearby but unrelated first result. */
+export const observationsForScoring = (resource: ReferenceResource, observations: CapturedObservation[]) => observations.filter((observation) =>
+  observation.provider !== "google_places" || !observation.values?.name || matchesIdentity(resource, observation.values)
+);
 
 /** Fixed, bounded evidence envelope: model input cannot alter collection scope. */
 export function formatAuditEvidence(observations: CapturedObservation[]): string {
@@ -60,7 +65,8 @@ export function hostedEvidenceFromEnv() {
       directory: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT ? new TrustedDirectoryClient({ endpoint: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT }) : undefined
     }),
     score: async (resource: ReferenceResource, observations: CapturedObservation[]) => {
-      const score = await scorer.score({ name: resource.name, address: resource.address, evidence: formatAuditEvidence(observations), citationProviders: [...new Set(observations.map((observation) => observation.provider))] });
+      const scoringObservations = observationsForScoring(resource, observations);
+      const score = await scorer.score({ name: resource.name, address: resource.address, evidence: formatAuditEvidence(scoringObservations), citationProviders: [...new Set(scoringObservations.map((observation) => observation.provider))] });
       return {
         promptVersion: CBO_AUDIT_PROMPT_VERSION,
         cboEligibility: score.cboEligibility,

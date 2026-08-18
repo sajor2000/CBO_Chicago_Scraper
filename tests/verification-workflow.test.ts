@@ -19,6 +19,11 @@ test("a Google closure conflicts and never stages a closed status", () => {
   assert.equal(result.proposedValues.businessStatus, undefined);
 });
 
+test("a mismatched Google closure cannot trigger a closure review", () => {
+  const result = verifyResource({ resource, observations: [observation("google_places", { name: "Different Organization", address: "9 Elsewhere Ave", businessStatus: "closed" })] });
+  assert.equal(result.state, "no_change");
+});
+
 test("blocked, timeout, and 429 sources are unable to verify without a status delta", () => {
   for (const state of ["blocked", "timeout", "rate_limited"] as const) {
     const result = verifyResource({ resource, observations: [observation("firecrawl", {}, state)] });

@@ -12,7 +12,8 @@ const outcomeCopy: Record<CheckpointOutcome, { label: string; note: string; tone
 };
 
 const label = (value: string) => value.replace(/_/g, " ");
-const compact = (value: string) => value.replace(/\s+/g, " ").replace(/[`*_>#]/g, "").trim().slice(0, 500);
+const compact = (value: string) => value.replace(/\s+/g, " ").replace(/[`*_>#]/g, "").trim().slice(0, 320);
+const sameName = (left: string, right?: string) => !right || left.toLowerCase().replace(/[^a-z0-9]/g, "") === right.toLowerCase().replace(/[^a-z0-9]/g, "");
 const safeUrl = (value?: string) => {
   if (!value) return undefined;
   try {
@@ -70,13 +71,15 @@ export function SiteReports({ reports }: { reports: SiteVerificationReport[] }) 
               {report.evidence.observations.length ? <ul className="evidence-list">
                 {report.evidence.observations.map((observation, index) => {
                   const source = safeUrl(observation.sourceUrl);
+                  const identityMismatch = !sameName(report.resourceName, observation.values?.name);
                   return <li key={`${observation.provider}-${observation.observedAt}-${index}`}>
                     <strong>{label(observation.provider)}</strong> — {label(observation.state)}
                     {source ? <> · <a href={source} target="_blank" rel="noreferrer">open source</a></> : null}
+                    {identityMismatch ? <p className="identity-warning"><strong>Different organization returned.</strong> This result is not valid evidence for this listing.</p> : null}
                     {observation.values && Object.keys(observation.values).length ? <dl className="evidence-facts">
                       {Object.entries(observation.values).filter(([, value]) => value).map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{value}</dd></div>)}
                     </dl> : null}
-                    {observation.excerpt ? <p className="evidence-excerpt">{compact(observation.excerpt)}</p> : null}
+                    {observation.excerpt ? <details className="evidence-excerpt"><summary>Captured text</summary><p>{compact(observation.excerpt)}</p></details> : null}
                   </li>;
                 })}
               </ul> : <p>No detailed source capture was retained for this older run.</p>}
