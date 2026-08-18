@@ -1,0 +1,50 @@
+name: Production release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'master')
+    environment: production
+    runs-on: ubuntu-latest
+    env:
+      REVIEW_DATABASE_URL: ${{ secrets.REVIEW_DATABASE_URL }}
+      VERCEL_ORG_ID: team_nERqzi3mNlkIZecK3F986WAF
+      VERCEL_PROJECT_ID: prj_uEvxNMnjgemoPaoimjnnobkgwBhX
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm install --global vercel@58.11.0
+      - run: vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+      - run: vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Stage production artifact
+        id: stage
+        run: echo "url=$(vercel deploy --prebuilt --prod --skip-domain --yes --token=\"${{ secrets.VERCEL_TOKEN }}\")" >> "$GITHUB_OUTPUT"
+      - name: Migrate and verify production Neon
+        run: |
+          node scripts/apply-review-migrations.ts
+          node scripts/verify-review-schema.ts
+      - name: Promote the verified artifact
+        run: vercel promote "${{ steps.stage.outputs.url }}" --yes --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Smoke production
+        run: |
+          curl --fail --location --retry 5 --retry-delay 5 https://chicagohealthmap-cbo-verifier.vercel.app/review > /dev/null
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' https://chicagohealthmap-cbo-verifier.vercel.app/api/cron)" = 401

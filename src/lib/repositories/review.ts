@@ -4,6 +4,7 @@ import type { AiAdvisory } from "../verification/index.ts";
 import { summarizeCalibration, type CalibrationSummary } from "../verification/calibration.ts";
 import { assertReviewWorkspace, requireWorkspaceRole, reviewWorkspaceDb } from "../db.ts";
 import { redactEvidence } from "../evidence/redaction.ts";
+import { REQUIRED_REVIEW_SCHEMA_VERSION } from "../review-schema.ts";
 
 export type CandidateAction = ReviewDecision;
 export type FieldValues = Record<string, string>;
@@ -377,16 +378,23 @@ export class NeonReviewRepository {
 
   async assertBaselineReady(): Promise<void> {
     const rows = await this.#query<{
+      schema_ready: boolean;
       outcome: "succeeded" | "failed";
       source_row_count: number;
       inserted_snapshot_count: number;
       unchanged_count: number;
       skipped_count: number;
       failed_count: number;
-    }>(`select outcome, source_row_count, inserted_snapshot_count, unchanged_count, skipped_count, failed_count
-        from review_workspace.baseline_import_receipts order by recorded_at desc limit 1`);
+    }>(`select exists (
+          select 1 from review_workspace.schema_migrations where version = $1
+        ) as schema_ready,
+        receipt.outcome, receipt.source_row_count, receipt.inserted_snapshot_count,
+        receipt.unchanged_count, receipt.skipped_count, receipt.failed_count
+        from review_workspace.baseline_import_receipts receipt
+        order by receipt.recorded_at desc limit 1`, [REQUIRED_REVIEW_SCHEMA_VERSION]);
     const row = rows[0];
-    if (!row || !isReconciledBaseline({ outcome: row.outcome, sourceRows: Number(row.source_row_count), insertedSnapshots: Number(row.inserted_snapshot_count), unchanged: Number(row.unchanged_count), skipped: Number(row.skipped_count), failed: Number(row.failed_count) })) {
+    if (!row?.schema_ready) throw new Error(`Review workspace migration ${REQUIRED_REVIEW_SCHEMA_VERSION} is required before verification.`);
+    if (!isReconciledBaseline({ outcome: row.outcome, sourceRows: Number(row.source_row_count), insertedSnapshots: Number(row.inserted_snapshot_count), unchanged: Number(row.unchanged_count), skipped: Number(row.skipped_count), failed: Number(row.failed_count) })) {
       throw new Error("A reconciled baseline-import receipt is required before web verification.");
     }
   }
