@@ -17,6 +17,7 @@ Apply with `npm run apply:review-migrations` (requires `REVIEW_DATABASE_URL`).
 | `011_pause_preserves_checkpoint_lease.sql` | no | Lets a paused run finish its already leased checkpoint without starting another; the controlled runner applies it after `010` |
 | `012_cbo_eligibility_review.sql` | no | Adds a human-gated CBO-eligibility review candidate kind; the controlled runner applies it after `011` |
 | `013_eligibility_decision_state.sql` | no | Records eligibility decisions without making them exportable directory approvals; the controlled runner applies it after `012` |
+| `014_migration_ledger_runtime_access.sql` | no | Grants the application role read-only schema-ledger access; the controlled runner applies it after `013` |
 
 Do not reuse sequence numbers. Older plans that mention `004_live_verification.sql` now mean `007_live_verification.sql`.
 

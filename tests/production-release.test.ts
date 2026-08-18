@@ -32,4 +32,7 @@ test("the main-branch workflow cannot promote before Neon verification", () => {
   assert.ok(staged >= 0 && staged < migrated && migrated < promoted);
   assert.match(workflow, /environment: production/);
   assert.match(workflow, /REVIEW_DATABASE_URL: \$\{\{ secrets\.REVIEW_DATABASE_URL \}\}/);
+  assert.match(workflow, /workflow_run\.event == 'push'/);
+  assert.match(workflow, /workflow_run\.head_repository\.full_name == github\.repository/);
+  assert.doesNotMatch(workflow, /uses: actions\/(checkout|setup-node)@v\d/);
 });
