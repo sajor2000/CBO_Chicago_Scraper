@@ -14,6 +14,12 @@ export function assertHostedVerificationConfigured(env: Record<string, string | 
   if (missing.length) throw new Error(`Hosted verification is not configured: ${missing.join(", ")}.`);
 }
 
+/** Discovery requires both bounded lead sources; AI advice remains optional. */
+export function assertDiscoveryConfigured(env: Record<string, string | undefined> = process.env): void {
+  const missing = ["FIRECRAWL_API_KEY", "GOOGLE_MAPS_API_KEY", "EXA_API_KEY"].filter((name) => !env[name]);
+  if (missing.length) throw new Error(`Discovery is not configured: ${missing.join(", ")}.`);
+}
+
 export async function verificationReadiness(input: {
   checkWorkspace?: () => Promise<void>;
   checkBaseline?: () => Promise<void>;

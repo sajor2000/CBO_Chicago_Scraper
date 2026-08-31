@@ -43,7 +43,7 @@ test("execution bounds provider work and passes its lease to candidate staging",
   assert.match(worker, /AI advisory output was unavailable or invalid/);
   assert.match(worker, /leaseToken: claim\.leaseToken/);
   assert.match(worker, /seededResource\(claim\.resourceId, claim\.snapshotId\)/);
-  assert.match(runs, /select claimed\.resource_id, membership\.resource_snapshot_id, claimed\.ordinal, claimed\.lease_token, claimed\.attempt/);
+  assert.match(runs, /select claimed\.resource_id, membership\.resource_snapshot_id, claimed\.discovery_query_cell_id, claimed\.discovery_lead_id, claimed\.ordinal, claimed\.lease_token, claimed\.attempt/);
   assert.match(repository, /active_checkpoint/);
   assert.match(repository, /checkpoint\.lease_token = \$8::uuid/);
   assert.match(repository, /state\.status in \('queued', 'running', 'paused'\)/);

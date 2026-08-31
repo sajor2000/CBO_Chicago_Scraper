@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { requireWorkspaceRole, WorkspaceAuthorizationError, reviewWorkspaceDb } from "../../../../lib/db.ts";
 import { DISCOVERY_POLICY_VERSION } from "../../../../lib/discovery/query-matrix.ts";
 
-type ActivationRequest = { active: boolean; acceptedCycleId?: string; dailyProviderCallCeiling?: number; rationale: string };
+type ActivationRequest = { active: boolean; acceptedCycleId?: string; dailyProviderCallCeiling?: number; serviceOwnerSubject?: string; rationale: string };
 
 /** Appends the auditable kill-switch state; it neither launches work nor touches source data. */
 export async function POST(request: Request): Promise<Response> {
@@ -12,12 +12,12 @@ export async function POST(request: Request): Promise<Response> {
     await requireWorkspaceRole(userId, "operator");
     const body = await request.json() as ActivationRequest;
     if (typeof body.active !== "boolean" || !body.rationale?.trim() || body.rationale.length > 1_000) throw new Error("A bounded activation rationale is required.");
-    if (body.active && (!body.acceptedCycleId || !Number.isInteger(body.dailyProviderCallCeiling) || body.dailyProviderCallCeiling! < 1 || body.dailyProviderCallCeiling! > 1_000)) throw new Error("Activation requires a completed cycle and bounded daily provider-call ceiling.");
+    if (body.active && (!body.acceptedCycleId || !body.serviceOwnerSubject?.trim() || body.serviceOwnerSubject.length > 200 || !Number.isInteger(body.dailyProviderCallCeiling) || body.dailyProviderCallCeiling! < 1 || body.dailyProviderCallCeiling! > 1_000)) throw new Error("Activation requires a completed cycle, service-owner approval, and bounded daily provider-call ceiling.");
     const query = reviewWorkspaceDb();
     const rows = await query`
       insert into review_workspace.discovery_activations
-        (active, accepted_cycle_id, actor_subject, policy_version, daily_provider_call_ceiling, rationale)
-      values (${body.active}, ${body.acceptedCycleId ?? null}::uuid, ${userId}, ${DISCOVERY_POLICY_VERSION}, ${body.dailyProviderCallCeiling ?? 1}, ${body.rationale.trim()})
+        (active, accepted_cycle_id, actor_subject, service_owner_subject, policy_version, daily_provider_call_ceiling, rationale)
+      values (${body.active}, ${body.acceptedCycleId ?? null}::uuid, ${userId}, ${body.serviceOwnerSubject?.trim() ?? null}, ${DISCOVERY_POLICY_VERSION}, ${body.dailyProviderCallCeiling ?? 1}, ${body.rationale.trim()})
       returning id, active
     ` as Array<{ id: string; active: boolean }>;
     return Response.json(rows[0], { status: 201 });

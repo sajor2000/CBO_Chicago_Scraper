@@ -12,7 +12,7 @@ test("exact Place ID and address is a duplicate, while shared organization ident
 
 test("only corroborated deterministic evidence can stage a new resource", () => {
   const lead = { name: "New Pantry", address: "9 Lake St" };
-  assert.equal(discoveryEvidenceGate(lead, [{ provider: "firecrawl", state: "success", observedAt: "2026-08-30T00:00:00Z" }], 1, true), "new_resource");
+  assert.equal(discoveryEvidenceGate(lead, [{ provider: "firecrawl", state: "success", observedAt: "2026-08-30T00:00:00Z" }], 1, true), "candidate_staged");
   assert.equal(discoveryEvidenceGate(lead, [{ provider: "tavily", state: "success", observedAt: "2026-08-30T00:00:00Z" }], 1, true), "insufficient_evidence");
   assert.equal(discoveryEvidenceGate(lead, [{ provider: "firecrawl", state: "rate_limited", observedAt: "2026-08-30T00:00:00Z" }], 2, true), "provider_failure");
 });

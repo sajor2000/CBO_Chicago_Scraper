@@ -6,8 +6,14 @@ export const DISCOVERY_MAX_QUERY_CELLS = 5;
 export const DISCOVERY_MAX_UNIQUE_LEADS = 50;
 export const DISCOVERY_MAX_PROVIDER_CALLS = 100;
 
-export type DiscoveryQueryCell = { category: CategoryCode; county: typeof DISCOVERY_COUNTIES[number]; query: string };
+export type DiscoveryProvider = "google_places" | "exa";
+export type DiscoveryQueryCell = { category: CategoryCode; county: typeof DISCOVERY_COUNTIES[number]; provider: DiscoveryProvider; query: string };
 
-export function discoveryQueryCells(categories: readonly CategoryCode[] = categoryCodes, counties = DISCOVERY_COUNTIES): DiscoveryQueryCell[] {
-  return categories.flatMap((category) => counties.map((county) => ({ category, county, query: `${category.replace(/_/g, " ")} services ${county} County Illinois` })));
+export function discoveryQueryCells(categories: readonly CategoryCode[] = categoryCodes, counties: readonly typeof DISCOVERY_COUNTIES[number][] = DISCOVERY_COUNTIES): DiscoveryQueryCell[] {
+  return categories.flatMap((category) => counties.flatMap((county) => (["google_places", "exa"] as const).map((provider) => ({
+    category,
+    county,
+    provider,
+    query: `${category.replace(/_/g, " ")} services ${county} County Illinois`
+  }))));
 }

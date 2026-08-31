@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectHostedEvidence } from "../src/lib/providers/hosted-evidence.ts";
+import { collectDiscoveryEvidence, collectHostedEvidence } from "../src/lib/providers/hosted-evidence.ts";
 
 test("hosted collection never scrapes a search-discovered URL", async () => {
   let scraped: string | undefined;
@@ -12,4 +12,17 @@ test("hosted collection never scrapes a search-discovered URL", async () => {
   });
   assert.equal(scraped, undefined);
   assert.equal(evidence.length, 3);
+});
+
+test("discovery validates only the identity-provided official URL before scraping", async () => {
+  let scraped: string | undefined;
+  const evidence = await collectDiscoveryEvidence({
+    lead: { name: "Example", address: "1 Main", url: "https://official.example/services" },
+    firecrawl: { scrape: async (url: string) => { scraped = url; return { provider: "firecrawl", state: "success", observedAt: "2026-08-30T00:00:00Z" }; } },
+    google: { search: async () => ({ provider: "google_places", state: "success", observedAt: "2026-08-30T00:00:00Z" }) },
+    exa: { search: async () => ({ provider: "exa", state: "success", observedAt: "2026-08-30T00:00:00Z", sourceUrl: "https://untrusted.example" }) },
+    validateOfficialUrl: async (url) => assert.equal(url, "https://official.example/services")
+  });
+  assert.equal(scraped, "https://official.example/services");
+  assert.equal(evidence.some((item) => item.sourceUrl === "https://untrusted.example"), true);
 });

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { assertReviewWorkspace, reviewWorkspaceDb } from "../db.ts";
 import type { CheckpointOutcome, FrozenCycleMembership, RunMode, RunStatus } from "../domain/review-workspace.ts";
+import { DISCOVERY_MAX_PROVIDER_CALLS, DISCOVERY_MAX_QUERY_CELLS, DISCOVERY_MAX_UNIQUE_LEADS, DISCOVERY_POLICY_VERSION, type DiscoveryQueryCell } from "../discovery/query-matrix.ts";
+import type { CapturedObservation } from "../retrieval/types.ts";
 
 export interface VerificationRun {
   id: string;
@@ -14,6 +16,26 @@ export interface VerificationRun {
   memberships: FrozenCycleMembership[];
   report: RunReport;
 }
+
+export type CheckpointClaim = {
+  checkpoint: number;
+  leaseToken: string;
+  attempt: number;
+  resourceId?: string;
+  snapshotId?: string;
+  discoveryQueryCellId?: string;
+  discoveryLeadId?: string;
+};
+
+export type DiscoveryRunLaunch = {
+  idempotencyKey: string;
+  cells: readonly DiscoveryQueryCell[];
+  uniqueLeadCap: number;
+  providerCallBudget: number;
+  dailyProviderCallCeiling: number;
+};
+
+export type DurableDiscoveryQueryCell = DiscoveryQueryCell & { id: string; runId: string; resultCap: number };
 
 export interface RunReport {
   recordsChecked: number;
@@ -52,6 +74,15 @@ export class RunLockError extends Error {
 const blankReport = (): RunReport => ({ recordsChecked: 0, candidatesStaged: 0, conflicts: 0, unableToVerify: 0, providerFailures: 0, budgetUsed: 0 });
 const copy = (run: VerificationRun) => structuredClone(run);
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const publicSourceUrl = (value?: string) => {
+  try {
+    if (!value) return undefined;
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+    url.username = ""; url.password = ""; url.search = ""; url.hash = "";
+    return url.toString();
+  } catch { return undefined; }
+};
 export const scheduledRunKey = () => `scheduled:${randomUUID()}`;
 
 /** Fixture-only synchronous registry. */
@@ -86,7 +117,7 @@ export class InMemoryRunRegistry {
     return run && copy(run);
   }
 
-  claimNext(runId: string): { resourceId: string; snapshotId?: string; checkpoint: number; leaseToken: string; attempt: number } | undefined {
+  claimNext(runId: string): CheckpointClaim | undefined {
     const run = this.#require(runId);
     if (["paused", "cancelled", "completed", "failed"].includes(run.status)) return undefined;
     if (this.#claims.has(run.id)) throw new RunLockError();
@@ -225,6 +256,223 @@ export class NeonRunRegistry {
     return this.#launch({ ...input, mode: "manual_selected", triggerKind: "manual", maximumSelection: 100 });
   }
 
+  async launchDiscovery(input: DiscoveryRunLaunch): Promise<VerificationRun> {
+    const cells = [...input.cells];
+    if (!input.idempotencyKey || !cells.length || cells.length > DISCOVERY_MAX_QUERY_CELLS) throw new Error(`Discovery requires between 1 and ${DISCOVERY_MAX_QUERY_CELLS} approved query cells.`);
+    if (input.uniqueLeadCap < 1 || input.uniqueLeadCap > DISCOVERY_MAX_UNIQUE_LEADS) throw new Error(`Discovery unique-lead cap must be between 1 and ${DISCOVERY_MAX_UNIQUE_LEADS}.`);
+    if (input.providerCallBudget < cells.length || input.providerCallBudget > DISCOVERY_MAX_PROVIDER_CALLS || input.providerCallBudget > input.dailyProviderCallCeiling) throw new Error("Discovery provider-call budget is outside the approved cap.");
+    if (cells.some((cell) => !cell.query.trim() || cell.query.length > 500)) throw new Error("Discovery query cells must contain bounded query text.");
+    const rows = await this.#query<{ id: string }>(`
+      with locked as (
+        select pg_advisory_xact_lock(hashtextextended('discovery_launch', 0))
+      ), activation as (
+        select activation.active, activation.daily_provider_call_ceiling
+        from review_workspace.discovery_activation_current current
+        join review_workspace.discovery_activations activation on activation.id = current.activation_id
+        where current.singleton and current.active
+      ), active as (
+        select run.id
+        from locked cross join review_workspace.verification_runs run
+        join review_workspace.run_current_state state on state.run_id = run.id
+        where run.run_mode = 'discovery_only' and state.status in ('queued', 'running', 'paused')
+      ), budget as (
+        insert into review_workspace.discovery_provider_budget_days (budget_day, reserved_calls)
+        select current_date, $3::integer from activation cross join locked
+        where $3::integer <= activation.daily_provider_call_ceiling
+          and not exists (select 1 from active)
+          and not exists (select 1 from review_workspace.verification_runs where idempotency_key = $1)
+        on conflict (budget_day) do update
+          set reserved_calls = review_workspace.discovery_provider_budget_days.reserved_calls + excluded.reserved_calls,
+              updated_at = now()
+          where review_workspace.discovery_provider_budget_days.reserved_calls + excluded.reserved_calls <=
+            (select daily_provider_call_ceiling from activation)
+        returning budget_day
+      ), inserted_run as (
+        insert into review_workspace.verification_runs (idempotency_key, trigger_kind, run_mode, run_parameters)
+        select $1, 'manual', 'discovery_only', jsonb_build_object(
+          'budget', $3::integer,
+          'reservedCalls', $3::integer,
+          'usedCalls', 0,
+          'uniqueLeadCap', $2::integer,
+          'policyVersion', $6,
+          'budgetDay', (select budget_day from budget)
+        )
+        where exists (select 1 from budget)
+        on conflict (idempotency_key) do nothing
+        returning id
+      ), inserted_state as (
+        insert into review_workspace.run_current_state (run_id, status)
+        select id, 'queued' from inserted_run
+      ), inserted_report as (
+        insert into review_workspace.run_reports (run_id, report)
+        select id, $5::jsonb from inserted_run
+      ), cells as (
+        insert into review_workspace.discovery_query_cells (run_id, ordinal, category_code, county, provider, query_text, policy_version, result_cap)
+        select run.id, entry.ordinal - 1, entry.value->>'category', entry.value->>'county', entry.value->>'provider', entry.value->>'query', $6, 5
+        from inserted_run run cross join jsonb_array_elements($7::jsonb) with ordinality entry(value, ordinal)
+        returning id, run_id, ordinal
+      )
+      insert into review_workspace.run_checkpoints (run_id, ordinal, discovery_query_cell_id)
+      select run_id, ordinal, id from cells
+      on conflict (run_id, ordinal) do nothing
+      returning run_id as id
+    `, [input.idempotencyKey, input.uniqueLeadCap, input.providerCallBudget, input.dailyProviderCallCeiling, JSON.stringify(blankReport()), DISCOVERY_POLICY_VERSION, JSON.stringify(cells)]);
+    const runId = rows[0]?.id ?? (await this.#query<{ id: string }>("select id from review_workspace.verification_runs where idempotency_key = $1", [input.idempotencyKey]))[0]?.id;
+    if (!runId) throw new Error("Discovery is disabled, already active, or lacks provider-call budget.");
+    return (await this.get(runId))!;
+  }
+
+  async discoveryQueryCell(queryCellId: string): Promise<DurableDiscoveryQueryCell | undefined> {
+    const rows = await this.#query<{ id: string; run_id: string; category_code: DurableDiscoveryQueryCell["category"]; county: DurableDiscoveryQueryCell["county"]; provider: DurableDiscoveryQueryCell["provider"]; query_text: string; result_cap: number }>(`
+      select id, run_id, category_code, county, provider, query_text, result_cap
+      from review_workspace.discovery_query_cells where id = $1::uuid
+    `, [queryCellId]);
+    const row = rows[0];
+    return row && { id: row.id, runId: row.run_id, category: row.category_code, county: row.county, provider: row.provider, query: row.query_text, resultCap: Number(row.result_cap) };
+  }
+
+  async completeDiscoveryQueryCell(input: { runId: string; queryCellId: string; leaseToken: string; observations: CapturedObservation[] }): Promise<void> {
+    const observations = input.observations.slice(0, 5).map(({ provider, state, observedAt, sourceUrl, values }) => ({
+      provider, state, observedAt, sourceUrl: publicSourceUrl(sourceUrl), values
+    }));
+    const rows = await this.#query<{ completed: boolean }>(`
+      with locked as (
+        select pg_advisory_xact_lock(hashtextextended($1::text, 0))
+      ), checkpoint as (
+        select checkpoint.ordinal
+        from locked cross join review_workspace.run_checkpoints checkpoint
+        join review_workspace.discovery_query_cells cell on cell.id = checkpoint.discovery_query_cell_id
+        where checkpoint.run_id = $1::uuid and cell.id = $2::uuid
+          and checkpoint.lease_token = $3::uuid and checkpoint.state = 'leased'
+          and checkpoint.lease_expires_at > now()
+        for update of checkpoint
+      ), normalized as (
+        select entry.value, entry.ordinal
+        from jsonb_array_elements($4::jsonb) with ordinality entry(value, ordinal)
+        where exists (select 1 from checkpoint)
+      ), observations as (
+        insert into review_workspace.source_observations
+          (run_id, provider, observation_key, observed_at, extracted_values, retrieval_metadata)
+        select $1::uuid, value->>'provider', $2 || ':' || ordinal,
+          (value->>'observedAt')::timestamptz, coalesce(value->'values', '{}'::jsonb),
+          jsonb_build_object('state', value->>'state', 'sourceUrl', value->>'sourceUrl', 'discoveryQueryCellId', $2)
+        from normalized
+        on conflict (provider, observation_key, observed_at) do nothing
+        returning id, observation_key
+      ), lineages as (
+        insert into review_workspace.discovery_lineages
+          (display_name, display_address, display_phone, normalized_name, normalized_address, place_id, canonical_domain, normalized_phone)
+        select value->'values'->>'name', value->'values'->>'address', value->'values'->>'phone',
+          lower(regexp_replace(value->'values'->>'name', '[^a-zA-Z0-9]+', '', 'g')),
+          lower(regexp_replace(value->'values'->>'address', '[^a-zA-Z0-9]+', '', 'g')),
+          value->'values'->>'placeId',
+          lower(regexp_replace(coalesce(value->'values'->>'url', ''), '^https?://(www\\.)?', '')),
+          regexp_replace(coalesce(value->'values'->>'phone', ''), '[^0-9]+', '', 'g')
+        from normalized
+        where value->>'state' = 'success'
+          and nullif(value->'values'->>'name', '') is not null
+          and nullif(value->'values'->>'address', '') is not null
+        on conflict (normalized_name, normalized_address) do nothing
+        returning id
+      ), linked_observations as (
+        insert into review_workspace.discovery_observations (lineage_id, source_observation_id)
+        select lineage.id, source.id
+        from normalized
+        join review_workspace.discovery_lineages lineage
+          on lineage.normalized_name = lower(regexp_replace(normalized.value->'values'->>'name', '[^a-zA-Z0-9]+', '', 'g'))
+         and lineage.normalized_address = lower(regexp_replace(normalized.value->'values'->>'address', '[^a-zA-Z0-9]+', '', 'g'))
+        join review_workspace.source_observations source
+          on source.run_id = $1::uuid and source.observation_key = $2 || ':' || normalized.ordinal
+        where normalized.value->>'state' = 'success'
+        on conflict do nothing
+      ), inserted_leads as (
+        insert into review_workspace.discovery_leads (run_id, lineage_id, first_query_cell_id, disposition)
+        select $1::uuid, lineage.id, $2::uuid, 'pending'
+        from normalized
+        join review_workspace.discovery_lineages lineage
+          on lineage.normalized_name = lower(regexp_replace(normalized.value->'values'->>'name', '[^a-zA-Z0-9]+', '', 'g'))
+         and lineage.normalized_address = lower(regexp_replace(normalized.value->'values'->>'address', '[^a-zA-Z0-9]+', '', 'g'))
+        where normalized.value->>'state' = 'success'
+        on conflict (run_id, lineage_id) do nothing
+        returning id
+      ), ranked_leads as (
+        select lead.id, row_number() over (order by lead.created_at, lead.id) as ordinal
+        from review_workspace.discovery_leads lead
+        where lead.run_id = $1::uuid and lead.disposition = 'pending'
+          and not exists (
+            select 1 from review_workspace.run_checkpoints checkpoint
+            where checkpoint.discovery_lead_id = lead.id
+          )
+      ), over_budget_leads as (
+        update review_workspace.discovery_leads lead
+        set disposition = 'not_processed_budget', reasons = '["Unique-lead cap reached."]'::jsonb
+        from ranked_leads ranked
+        where lead.id = ranked.id
+          and ranked.ordinal > coalesce((select (run_parameters->>'uniqueLeadCap')::integer from review_workspace.verification_runs where id = $1::uuid), 0)
+        returning lead.id
+      ), allowed_leads as (
+        select ranked.id, ranked.ordinal
+        from ranked_leads ranked
+        where ranked.ordinal <= coalesce((select (run_parameters->>'uniqueLeadCap')::integer from review_workspace.verification_runs where id = $1::uuid), 0)
+      ), checkpoints as (
+        insert into review_workspace.run_checkpoints (run_id, ordinal, discovery_lead_id)
+        select $1::uuid,
+          (select coalesce(max(ordinal), -1) + 1 from review_workspace.run_checkpoints where run_id = $1::uuid) + allowed.ordinal - 1,
+          allowed.id
+        from allowed_leads allowed cross join locked
+        on conflict (run_id, ordinal) do nothing
+      )
+      select review_workspace.complete_run_checkpoint($1::uuid, $3::uuid, 'query_completed',
+        jsonb_build_object(
+          'recordsChecked', 0,
+          'budgetUsed', 0,
+          'queryCellId', $2,
+          'returnedResults', jsonb_array_length($4::jsonb),
+          'providerFailures', case when jsonb_array_length($4::jsonb) > 0
+            and not exists (select 1 from jsonb_array_elements($4::jsonb) item where item->>'state' in ('success', 'no_result'))
+            then 1 else 0 end
+        )) as completed
+      from checkpoint
+    `, [input.runId, input.queryCellId, input.leaseToken, JSON.stringify(observations)]);
+    if (!rows[0]?.completed) throw new RunLockError();
+  }
+
+  async completeDiscoveryLead(input: { runId: string; leadId: string; leaseToken: string; outcome: Extract<CheckpointOutcome, "candidate_staged" | "duplicate" | "possible_duplicate" | "out_of_scope" | "not_a_cbo" | "insufficient_evidence" | "provider_failure">; reasons: string[] }): Promise<void> {
+    const rows = await this.#query<{ completed: boolean }>(`
+      with checkpoint as (
+        select checkpoint.run_id, lead.lineage_id
+        from review_workspace.run_checkpoints checkpoint
+        join review_workspace.discovery_leads lead on lead.id = checkpoint.discovery_lead_id
+        where checkpoint.run_id = $1::uuid and checkpoint.discovery_lead_id = $2::uuid
+          and checkpoint.lease_token = $3::uuid and checkpoint.state = 'leased'
+          and checkpoint.lease_expires_at > now()
+        for update of checkpoint
+      ), updated_lead as (
+        update review_workspace.discovery_leads lead
+        set disposition = $4, reasons = $5::jsonb
+        from checkpoint
+        where lead.id = $2::uuid and lead.run_id = checkpoint.run_id
+        returning lead.lineage_id
+      ), evaluation as (
+        insert into review_workspace.discovery_evaluations (lineage_id, identity_policy_version, disposition, reasons)
+        select lineage_id, 'discovery-v1', $4, $5::jsonb from updated_lead
+      )
+      select review_workspace.complete_run_checkpoint($1::uuid, $3::uuid, $4,
+        jsonb_build_object(
+          'recordsChecked', 1,
+          'candidatesStaged', case when $4 = 'candidate_staged' then 1 else 0 end,
+          'conflicts', case when $4 = 'possible_duplicate' then 1 else 0 end,
+          'unableToVerify', case when $4 = 'insufficient_evidence' then 1 else 0 end,
+          'providerFailures', case when $4 = 'provider_failure' then 1 else 0 end,
+          'budgetUsed', 1,
+          'discoveryLeadId', $2,
+          'reasons', $5::jsonb
+        )) as completed
+      from checkpoint
+    `, [input.runId, input.leadId, input.leaseToken, input.outcome, JSON.stringify(input.reasons.slice(0, 10).map((reason) => reason.slice(0, 500)))]);
+    if (!rows[0]?.completed) throw new RunLockError();
+  }
+
   async launchFullCycle(input: { idempotencyKey: string; manifestId: string; budget: number }): Promise<VerificationRun> {
     const active = await this.#query<{ id: string }>(`
       select run.id from review_workspace.verification_runs run
@@ -287,7 +535,7 @@ export class NeonRunRegistry {
   }
 
   /** Starts or resumes the active scheduled cohort over every due seeded resource. */
-  async launchScheduled(now = new Date()): Promise<VerificationRun> {
+  async launchScheduled(now = new Date()): Promise<VerificationRun | undefined> {
     const active = await this.#query<{ id: string }>(`
       select run.id
       from review_workspace.verification_runs run
@@ -307,7 +555,16 @@ export class NeonRunRegistry {
         and (due.next_due_at is null or due.next_due_at <= $1)
       order by membership.resource_id
     `, [now.toISOString()]);
-    if (!memberships.length) throw new Error("A promoted reconciled refresh with due resources is required.");
+    if (!memberships.length) {
+      const discovery = await this.#query<{ id: string }>(`
+        select run.id
+        from review_workspace.verification_runs run
+        join review_workspace.run_current_state state on state.run_id = run.id
+        where run.run_mode = 'discovery_only' and state.status in ('queued', 'running')
+        order by run.started_at asc limit 1
+      `);
+      return discovery[0]?.id ? (await this.get(discovery[0].id)) : undefined;
+    }
     const key = scheduledRunKey();
     return this.#launch({ idempotencyKey: key, selection: memberships.map(({ resource_id }) => resource_id), memberships: memberships.map(({ resource_id, resource_snapshot_id }) => ({ resourceId: resource_id, snapshotId: resource_snapshot_id })), manifestId: memberships[0]!.manifest_id, budget: memberships.length, mode: "scheduled_cycle", triggerKind: "scheduled", maximumSelection: 10_000 });
   }
@@ -421,25 +678,45 @@ export class NeonRunRegistry {
       site_report: SiteReportPayload | null;
       candidate_id: string | null;
     }>(`
-      select outcome.run_id, checkpoint.resource_id,
-        coalesce(nullif(snapshot.source_payload->>'organization_name', ''), nullif(snapshot.source_payload->>'location_name', ''), nullif(snapshot.source_payload->>'name', ''), resource.reference_source_id) as resource_name,
+      select outcome.run_id, coalesce(checkpoint.resource_id, lead.id, cell.id) as resource_id,
+        coalesce(
+          nullif(snapshot.source_payload->>'organization_name', ''),
+          nullif(snapshot.source_payload->>'location_name', ''),
+          nullif(snapshot.source_payload->>'name', ''),
+          resource.reference_source_id,
+          lineage.display_name,
+          cell.query_text
+        ) as resource_name,
         outcome.outcome, outcome.completed_at, outcome.report_delta->'siteReport' as site_report,
         candidate.candidate_id
       from review_workspace.run_checkpoint_outcomes outcome
       join review_workspace.run_checkpoints checkpoint on checkpoint.run_id = outcome.run_id and checkpoint.ordinal = outcome.ordinal
-      join review_workspace.resources resource on resource.id = checkpoint.resource_id
+      left join review_workspace.resources resource on resource.id = checkpoint.resource_id
       left join lateral (
         select source_payload from review_workspace.resource_snapshots
         where resource_id = checkpoint.resource_id order by imported_at desc limit 1
       ) snapshot on true
+      left join review_workspace.discovery_query_cells cell on cell.id = checkpoint.discovery_query_cell_id
+      left join review_workspace.discovery_leads lead on lead.id = checkpoint.discovery_lead_id
+      left join review_workspace.discovery_lineages lineage on lineage.id = lead.lineage_id
       left join lateral (
         select state.candidate_id
         from review_workspace.candidate_current_state state
         join review_workspace.candidate_revisions current_revision on current_revision.id = state.candidate_revision_id
         where current_revision.resource_id = checkpoint.resource_id
+           or exists (
+             select 1 from review_workspace.candidate_revision_discovery_lineages link
+             where link.candidate_revision_id = current_revision.id and link.lineage_id = lead.lineage_id
+           )
           and exists (
             select 1 from review_workspace.candidate_revisions run_revision
-            where run_revision.run_id = outcome.run_id and run_revision.resource_id = checkpoint.resource_id
+            where run_revision.run_id = outcome.run_id and (
+              run_revision.resource_id = checkpoint.resource_id
+              or exists (
+                select 1 from review_workspace.candidate_revision_discovery_lineages run_link
+                where run_link.candidate_revision_id = run_revision.id and run_link.lineage_id = lead.lineage_id
+              )
+            )
           )
         order by state.updated_at desc limit 1
       ) candidate on true
@@ -453,7 +730,7 @@ export class NeonRunRegistry {
       outcome: row.outcome,
       verificationState: row.site_report?.verificationState,
       completedAt: row.completed_at,
-      reasons: row.site_report?.reasons ?? ["This run predates detailed per-resource reports."],
+      reasons: row.site_report?.reasons ?? (row.outcome === "query_completed" ? ["Discovery query cell completed."] : ["This run predates detailed per-resource reports."]),
       providerIssues: row.site_report?.providerIssues ?? [],
       candidateId: row.candidate_id ?? undefined,
       evidence: row.site_report?.evidence ?? { observations: [] }
@@ -468,8 +745,8 @@ export class NeonRunRegistry {
     return rows[0]?.status;
   }
 
-  async claimNext(runId: string): Promise<{ resourceId: string; snapshotId?: string; checkpoint: number; leaseToken: string; attempt: number } | undefined> {
-    const rows = await this.#query<{ resource_id: string; resource_snapshot_id: string | null; ordinal: number; lease_token: string; attempt: number }>(`
+  async claimNext(runId: string): Promise<CheckpointClaim | undefined> {
+    const rows = await this.#query<{ resource_id: string | null; resource_snapshot_id: string | null; discovery_query_cell_id: string | null; discovery_lead_id: string | null; ordinal: number; lease_token: string; attempt: number }>(`
       with terminal_state as (
         update review_workspace.run_current_state state
         set status = case
@@ -492,9 +769,9 @@ export class NeonRunRegistry {
         where checkpoint.run_id = state.run_id and checkpoint.run_id = $1::uuid
           and state.status in ('queued', 'running')
           and checkpoint.ordinal = state.next_checkpoint_ordinal
-          and (checkpoint.state = 'pending' or (checkpoint.state = 'leased' and checkpoint.lease_expires_at <= now()))
+          and (checkpoint.state = 'pending' or (checkpoint.state = 'retry_wait' and checkpoint.next_attempt_at <= now()) or (checkpoint.state = 'leased' and checkpoint.lease_expires_at <= now()))
           and not exists (select 1 from terminal_state)
-        returning checkpoint.resource_id, checkpoint.cycle_membership_id, checkpoint.ordinal, checkpoint.lease_token, checkpoint.attempt
+        returning checkpoint.resource_id, checkpoint.cycle_membership_id, checkpoint.discovery_query_cell_id, checkpoint.discovery_lead_id, checkpoint.ordinal, checkpoint.lease_token, checkpoint.attempt
       ), started as (
         update review_workspace.run_current_state state
         set status = 'running', updated_at = now(), revision = revision + 1
@@ -506,7 +783,7 @@ export class NeonRunRegistry {
         from review_workspace.verification_runs run
         where run.id in (select run_id from started) and cycle.id = run.cycle_id and cycle.status <> 'running'
       )
-      select claimed.resource_id, membership.resource_snapshot_id, claimed.ordinal, claimed.lease_token, claimed.attempt
+      select claimed.resource_id, membership.resource_snapshot_id, claimed.discovery_query_cell_id, claimed.discovery_lead_id, claimed.ordinal, claimed.lease_token, claimed.attempt
       from claimed left join review_workspace.cycle_memberships membership on membership.id = claimed.cycle_membership_id
     `, [runId]);
     if (!rows[0]) {
@@ -514,7 +791,13 @@ export class NeonRunRegistry {
       if (!run || run.status === "cancelled" || run.status === "completed") return undefined;
       throw new RunLockError();
     }
-    return { resourceId: rows[0].resource_id, snapshotId: rows[0].resource_snapshot_id ?? undefined, checkpoint: Number(rows[0].ordinal), leaseToken: rows[0].lease_token, attempt: Number(rows[0].attempt) };
+    return {
+      ...(rows[0].resource_id ? { resourceId: rows[0].resource_id } : {}),
+      ...(rows[0].resource_snapshot_id ? { snapshotId: rows[0].resource_snapshot_id } : {}),
+      ...(rows[0].discovery_query_cell_id ? { discoveryQueryCellId: rows[0].discovery_query_cell_id } : {}),
+      ...(rows[0].discovery_lead_id ? { discoveryLeadId: rows[0].discovery_lead_id } : {}),
+      checkpoint: Number(rows[0].ordinal), leaseToken: rows[0].lease_token, attempt: Number(rows[0].attempt)
+    };
   }
 
   async completeCheckpoint(runId: string, leaseToken: string, report: Partial<Omit<RunReport, "recordsChecked" | "budgetUsed">>, outcome: CheckpointOutcome, siteReport?: SiteReportPayload): Promise<void> {
@@ -540,6 +823,60 @@ export class NeonRunRegistry {
           updated_at = now(), revision = revision + 1
       where state.run_id = $1::uuid and exists (select 1 from released)
     `, [runId, leaseToken]);
+  }
+
+  /** Persists the only retry windows permitted for discovery provider failures. */
+  async retryDiscoveryCheckpoint(runId: string, leaseToken: string): Promise<boolean> {
+    const rows = await this.#query<{ run_id: string }>(`
+      with retried as (
+        update review_workspace.run_checkpoints checkpoint
+        set state = 'retry_wait', lease_token = null, lease_expires_at = null,
+            next_attempt_at = now() + case when checkpoint.attempt = 1 then interval '1 minute' else interval '5 minutes' end
+        where checkpoint.run_id = $1::uuid and checkpoint.lease_token = $2::uuid
+          and checkpoint.state = 'leased' and checkpoint.lease_expires_at > now()
+          and checkpoint.attempt < 3
+          and (checkpoint.discovery_query_cell_id is not null or checkpoint.discovery_lead_id is not null)
+        returning checkpoint.run_id
+      )
+      update review_workspace.run_current_state state
+      set status = 'queued', updated_at = now(), revision = revision + 1
+      where state.run_id in (select run_id from retried)
+      returning state.run_id
+    `, [runId, leaseToken]);
+    return Boolean(rows[0]);
+  }
+
+  /** Charges one bounded provider attempt against the launch-time reservation. */
+  async consumeDiscoveryProviderCall(runId: string): Promise<boolean> {
+    const rows = await this.#query<{ id: string }>(`
+      with eligible as (
+        select run.id, day.budget_day
+        from review_workspace.verification_runs run
+        join review_workspace.discovery_provider_budget_days day
+          on day.budget_day = (run.run_parameters->>'budgetDay')::date
+        where run.id = $1::uuid and run.run_mode = 'discovery_only'
+          and day.used_calls < day.reserved_calls
+          and coalesce((run.run_parameters->>'usedCalls')::integer, 0)
+            < coalesce((run.run_parameters->>'reservedCalls')::integer, 0)
+        for update of run, day
+      ), charged_run as (
+        update review_workspace.verification_runs run
+        set run_parameters = jsonb_set(
+          run.run_parameters,
+          '{usedCalls}',
+          to_jsonb(coalesce((run.run_parameters->>'usedCalls')::integer, 0) + 1)
+        )
+        from eligible
+        where run.id = eligible.id
+        returning run.id, (run.run_parameters->>'budgetDay')::date as budget_day
+      )
+      update review_workspace.discovery_provider_budget_days day
+      set used_calls = used_calls + 1, updated_at = now()
+      from charged_run run
+      where day.budget_day = run.budget_day and day.used_calls < day.reserved_calls
+      returning run.id
+    `, [runId]);
+    return Boolean(rows[0]);
   }
 
   async failCheckpoint(runId: string, leaseToken: string): Promise<void> {
@@ -590,6 +927,21 @@ export class NeonRunRegistry {
         set status = 'cancelled', updated_at = now(), revision = revision + 1
         where run_id = $1::uuid and status not in ('completed', 'cancelled')
         returning run_id
+      ), released_discovery_budget as (
+        update review_workspace.discovery_provider_budget_days day
+        set reserved_calls = greatest(
+              day.used_calls,
+              day.reserved_calls - greatest(
+                0,
+                coalesce((run.run_parameters->>'reservedCalls')::integer, 0)
+                  - coalesce((run.run_parameters->>'usedCalls')::integer, 0)
+              )
+            ),
+            updated_at = now()
+        from review_workspace.verification_runs run
+        where run.id in (select run_id from cancelled)
+          and run.run_mode = 'discovery_only'
+          and day.budget_day = (run.run_parameters->>'budgetDay')::date
       )
       update review_workspace.verification_cycles cycle
       set status = 'cancelled', cancelled_at = now()

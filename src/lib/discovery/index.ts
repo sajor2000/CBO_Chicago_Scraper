@@ -1,6 +1,7 @@
 import type { CapturedObservation } from "../retrieval/types.ts";
 
-export type DiscoveryDisposition = "duplicate" | "possible_duplicate" | "out_of_scope" | "not_a_cbo" | "insufficient_evidence" | "provider_failure" | "new_resource";
+export type DiscoveryDisposition = "candidate_staged" | "duplicate" | "possible_duplicate" | "out_of_scope" | "not_a_cbo" | "insufficient_evidence" | "provider_failure" | "not_processed_budget";
+export type DiscoveryEvidenceDisposition = Extract<DiscoveryDisposition, "candidate_staged" | "insufficient_evidence" | "provider_failure">;
 export type DiscoveryLead = { name?: string; address?: string; phone?: string; url?: string; placeId?: string; county?: string };
 export type ExistingLocation = { id: string; name?: string; address?: string; phone?: string; url?: string; placeId?: string };
 
@@ -11,7 +12,7 @@ const domain = (value?: string) => { try { return value ? new URL(value).hostnam
 export function resolveDiscoveryLead(lead: DiscoveryLead, existing: readonly ExistingLocation[], approvedCounties: readonly string[]): { disposition: DiscoveryDisposition; reasons: string[]; matchedIds: string[] } {
   if (!lead.address || !lead.county || !approvedCounties.includes(lead.county)) return { disposition: "out_of_scope", reasons: ["An exact approved-county service address is required."], matchedIds: [] };
   const name = normalize(lead.name), address = normalize(lead.address), phone = normalize(lead.phone), leadDomain = domain(lead.url);
-  for (const item of existing) if (lead.placeId && item.placeId === lead.placeId && normalize(item.address) === address) return { disposition: "duplicate", reasons: ["Matching Google Place ID and service address."], matchedIds: [item.id] };
+  for (const item of existing) if (lead.placeId && item.placeId === lead.placeId && (!item.address || normalize(item.address) === address)) return { disposition: "duplicate", reasons: ["Matching Google Place ID without a material service-address conflict."], matchedIds: [item.id] };
   const ambiguous = existing.filter((item) => {
     const itemAddress = normalize(item.address);
     if (lead.placeId && item.placeId === lead.placeId) return true;
@@ -22,9 +23,11 @@ export function resolveDiscoveryLead(lead: DiscoveryLead, existing: readonly Exi
   return { disposition: "insufficient_evidence", reasons: ["Identity is unmatched; corroborating evidence is still required."], matchedIds: [] };
 }
 
-export function discoveryEvidenceGate(lead: DiscoveryLead, observations: readonly CapturedObservation[], independentTrustedSources: number, directServiceEvidence: boolean): DiscoveryDisposition {
+export function discoveryEvidenceGate(lead: DiscoveryLead, observations: readonly CapturedObservation[], independentTrustedSources: number, directServiceEvidence: boolean): DiscoveryEvidenceDisposition {
   if (!lead.name || !lead.address) return "insufficient_evidence";
-  if (observations.some(({ state }) => ["timeout", "rate_limited"].includes(state))) return "provider_failure";
+  if (!observations.some(({ state }) => state === "success") && observations.some(({ state }) => ["timeout", "rate_limited", "blocked"].includes(state))) return "provider_failure";
   const official = observations.some(({ provider, state }) => provider === "firecrawl" && state === "success");
-  return (official && directServiceEvidence && independentTrustedSources >= 1) || independentTrustedSources >= 2 ? "new_resource" : "insufficient_evidence";
+  return (official && directServiceEvidence && independentTrustedSources >= 1) || independentTrustedSources >= 2 ? "candidate_staged" : "insufficient_evidence";
 }
+
+export const retryableDiscoveryState = (state: CapturedObservation["state"]) => state === "timeout" || state === "rate_limited";

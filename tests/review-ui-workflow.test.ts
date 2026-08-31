@@ -117,11 +117,12 @@ test("every completed resource has a durable, evidence-linked report surface", (
   assert.match(registry, /run_checkpoint_outcomes/);
 });
 
-test("operator workflow separates current audits from planned new-resource discovery", () => {
+test("operator workflow separates current audits from manually activated new-resource discovery", () => {
   const page = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
   assert.match(page, /Check current listings/);
   assert.match(page, /Find new resources/);
-  assert.match(page, /Backend lane next/);
+  assert.match(page, /Disabled until activated/);
+  assert.match(page, /DiscoveryControls/);
 });
 
 test("review provenance exposes only redacted, structured advisory evidence", () => {
@@ -130,6 +131,7 @@ test("review provenance exposes only redacted, structured advisory evidence", ()
   assert.deepEqual(provenance.observations[0]?.values, { phone: "555-1212" });
   assert.equal(provenance.advisory?.cboEligibility, "likely_cbo");
   assert.deepEqual(provenance.advisory?.citations, ["official"]);
+  assert.equal(reviewProvenance({ observations: [{ provider: "directory", state: "success", observedAt: "2026-08-13T00:00:00Z", sourceUrl: "javascript:alert(1)" }] }).observations[0]?.sourceUrl, undefined);
   const detail = readFileSync(new URL("../src/app/review/[candidateId]/page.tsx", import.meta.url), "utf8");
   assert.match(detail, /ReviewProvenanceCard/);
 });

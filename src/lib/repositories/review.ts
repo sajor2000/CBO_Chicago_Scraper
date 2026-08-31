@@ -5,6 +5,7 @@ import { summarizeCalibration, type CalibrationSummary } from "../verification/c
 import { assertReviewWorkspace, requireWorkspaceRole, reviewWorkspaceDb } from "../db.ts";
 import { redactEvidence } from "../evidence/redaction.ts";
 import { REQUIRED_REVIEW_SCHEMA_VERSION } from "../review-schema.ts";
+import type { DiscoveryLead, ExistingLocation } from "../discovery/index.ts";
 
 export type CandidateAction = ReviewDecision;
 export type FieldValues = Record<string, string>;
@@ -175,6 +176,14 @@ type CandidateRow = {
 };
 
 const stringValue = (value: unknown) => typeof value === "string" ? redactEvidence(value).slice(0, 6000) : undefined;
+const publicHttpUrl = (value: unknown): string | undefined => {
+  const candidate = stringValue(value);
+  try {
+    if (!candidate) return undefined;
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
+  } catch { return undefined; }
+};
 const fieldValues = (value: unknown): FieldValues | undefined => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const entries = Object.entries(value).flatMap(([key, entry]) => {
@@ -195,7 +204,7 @@ export const reviewProvenance = (value: unknown): ReviewProvenance => {
     const observedAt = stringValue(observation.observedAt);
     if (!provider || !state || !observedAt) return [];
     const values = fieldValues(observation.values);
-    return [{ provider, state, observedAt, sourceUrl: stringValue(observation.sourceUrl), excerpt: stringValue(observation.excerpt), ...(values ? { values } : {}) }];
+    return [{ provider, state, observedAt, sourceUrl: publicHttpUrl(observation.sourceUrl), excerpt: stringValue(observation.excerpt), ...(values ? { values } : {}) }];
   }) : [];
   const rawAdvisory = source.advisory && typeof source.advisory === "object" && !Array.isArray(source.advisory) ? source.advisory as Record<string, unknown> : undefined;
   if (!rawAdvisory) return { observations };
@@ -255,7 +264,7 @@ const candidateSelect = `
     state.revision,
     state.status,
     revision.kind,
-    ${snapshotNameExpression} as resource_name,
+    coalesce(${snapshotNameExpression}, revision.proposed_values->>'name', revision.proposed_values->>'organization_name') as resource_name,
     revision.proposed_values,
     revision.before_values,
     state.approved_field_paths,
@@ -353,6 +362,67 @@ export class NeonReviewRepository {
       limit $1
     `, [Math.max(1, Math.min(limit, 100))]);
     return rows.map((row) => ({ id: row.id, name: row.name }));
+  }
+
+  async discoveryExistingLocations(): Promise<ExistingLocation[]> {
+    const rows = await this.#query<{ id: string; name: string | null; address: string | null; phone: string | null; url: string | null }>(`
+      select resource.id,
+        coalesce(nullif(snapshot.source_payload->>'organization_name', ''), nullif(snapshot.source_payload->>'location_name', ''), nullif(snapshot.source_payload->>'name', '')) as name,
+        coalesce(nullif(snapshot.source_payload->>'full_address', ''), nullif(snapshot.source_payload->>'address', '')) as address,
+        coalesce(nullif(snapshot.source_payload->>'phone', ''), nullif(snapshot.source_payload->>'phone_number', '')) as phone,
+        coalesce(nullif(snapshot.source_payload->>'website', ''), nullif(snapshot.source_payload->>'url', '')) as url
+      from review_workspace.resources resource
+      join lateral (
+        select source_payload from review_workspace.resource_snapshots
+        where resource_id = resource.id order by imported_at desc limit 1
+      ) snapshot on true
+    `);
+    return rows.map((row) => ({ id: row.id, ...(row.name ? { name: row.name } : {}), ...(row.address ? { address: row.address } : {}), ...(row.phone ? { phone: row.phone } : {}), ...(row.url ? { url: row.url } : {}) }));
+  }
+
+  async discoveryActivation(): Promise<{ active: boolean; dailyProviderCallCeiling?: number; acceptedCycles: Array<{ id: string; completedAt: string }> }> {
+    const [current, cycles] = await Promise.all([
+      this.#query<{ active: boolean; daily_provider_call_ceiling: number }>(`
+        select current.active, activation.daily_provider_call_ceiling
+        from review_workspace.discovery_activation_current current
+        join review_workspace.discovery_activations activation on activation.id = current.activation_id
+        where current.singleton
+      `),
+      this.#query<{ id: string; completed_at: string }>(`
+        select id, completed_at from review_workspace.verification_cycles
+        where status = 'completed' and completed_at is not null
+        order by completed_at desc limit 10
+      `)
+    ]);
+    return {
+      active: current[0]?.active ?? false,
+      dailyProviderCallCeiling: current[0] ? Number(current[0].daily_provider_call_ceiling) : undefined,
+      acceptedCycles: cycles.map((cycle) => ({ id: cycle.id, completedAt: cycle.completed_at }))
+    };
+  }
+
+  async discoveryLead(leadId: string): Promise<{ id: string; runId: string; lineageId: string; queryCellId: string; lead: DiscoveryLead } | undefined> {
+    const rows = await this.#query<{ id: string; run_id: string; lineage_id: string; first_query_cell_id: string; display_name: string; display_address: string | null; display_phone: string | null; canonical_domain: string | null; place_id: string | null; county: string }>(`
+      select lead.id, lead.run_id, lead.lineage_id, lead.first_query_cell_id,
+        lineage.display_name, lineage.display_address, lineage.display_phone, lineage.canonical_domain, lineage.place_id,
+        cell.county
+      from review_workspace.discovery_leads lead
+      join review_workspace.discovery_lineages lineage on lineage.id = lead.lineage_id
+      join review_workspace.discovery_query_cells cell on cell.id = lead.first_query_cell_id
+      where lead.id = $1::uuid
+    `, [leadId]);
+    const row = rows[0];
+    if (!row) return undefined;
+    return {
+      id: row.id, runId: row.run_id, lineageId: row.lineage_id, queryCellId: row.first_query_cell_id,
+      lead: {
+        name: row.display_name,
+        ...(row.display_address ? { address: row.display_address } : {}),
+        ...(row.canonical_domain ? { url: `https://${row.canonical_domain}` } : {}),
+        ...(row.display_phone ? { phone: row.display_phone } : {}),
+        ...(row.place_id ? { placeId: row.place_id } : {}), county: row.county
+      }
+    };
   }
 
   async calibrationSummary(): Promise<CalibrationSummary[]> {
@@ -470,6 +540,11 @@ export class NeonReviewRepository {
         select inserted_revision.id, link.resource_snapshot_id
         from inserted_revision join previous on true
         join review_workspace.candidate_revision_snapshot_links link on link.candidate_revision_id = previous.candidate_revision_id
+      ), linked_discovery_lineage as (
+        insert into review_workspace.candidate_revision_discovery_lineages (candidate_revision_id, lineage_id)
+        select inserted_revision.id, link.lineage_id
+        from inserted_revision join previous on true
+        join review_workspace.candidate_revision_discovery_lineages link on link.candidate_revision_id = previous.candidate_revision_id
       ), updated as (
         update review_workspace.candidate_current_state state
         set candidate_revision_id = inserted_revision.id, revision = state.revision + 1,
@@ -580,6 +655,81 @@ export class NeonReviewRepository {
       select id from updated_state union all select id from inserted_state
     `, [input.resourceId, input.runId, input.kind, JSON.stringify(input.beforeValues), JSON.stringify(input.proposedValues), JSON.stringify(observations), JSON.stringify(provenance), input.leaseToken]);
     if (!rows[0]) throw new Error("An active leased checkpoint and seeded resource snapshot are required before staging review evidence.");
+    return (await this.get(rows[0].id))!;
+  }
+
+  async stageDiscoveryCandidate(input: {
+    leadId: string;
+    lineageId: string;
+    runId: string;
+    leaseToken: string;
+    proposedValues: FieldValues;
+    observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: unknown }>;
+    advisory?: AiAdvisory;
+    advisoryUnavailable?: boolean;
+  }): Promise<ReviewCandidate> {
+    const observations = input.observations.map(({ excerpt, ...observation }) => ({ ...observation, excerpt: excerpt && redactEvidence(excerpt).slice(0, 6000) }));
+    const provenance = {
+      evidence: observations.map((observation) => observation.sourceUrl ?? `${observation.provider}: ${observation.state}`),
+      observations,
+      ...(input.advisory ? { advisory: input.advisory } : {}),
+      ...(input.advisoryUnavailable ? { advisoryUnavailable: true } : {})
+    };
+    const rows = await this.#query<{ id: string }>(`
+      with locked as (
+        select pg_advisory_xact_lock(hashtextextended($1::text, 0))
+      ), active_checkpoint as (
+        select checkpoint.run_id
+        from locked cross join review_workspace.run_checkpoints checkpoint
+        join review_workspace.run_current_state state on state.run_id = checkpoint.run_id
+        where checkpoint.run_id = $2::uuid and checkpoint.discovery_lead_id = $1::uuid
+          and checkpoint.lease_token = $7::uuid and checkpoint.state = 'leased'
+          and checkpoint.lease_expires_at > now() and state.status in ('queued', 'running', 'paused')
+        for update of checkpoint
+      ), previous as (
+        select state.candidate_id, state.candidate_revision_id
+        from review_workspace.candidate_current_state state
+        join review_workspace.candidate_revision_discovery_lineages link on link.candidate_revision_id = state.candidate_revision_id
+        where link.lineage_id = $3::uuid
+        order by state.updated_at desc limit 1
+      ), observations as (
+        insert into review_workspace.source_observations
+          (run_id, provider, observation_key, observed_at, extracted_values, retrieval_metadata)
+        select $2::uuid, entry->>'provider', coalesce(entry->>'sourceUrl', entry->>'provider') || ':' || entry->>'observedAt',
+          (entry->>'observedAt')::timestamptz, coalesce(entry->'values', '{}'::jsonb),
+          jsonb_build_object('state', entry->>'state', 'sourceUrl', entry->>'sourceUrl', 'excerpt', entry->>'excerpt')
+        from jsonb_array_elements($5::jsonb) entry cross join active_checkpoint
+        on conflict (provider, observation_key, observed_at) do nothing
+        returning id
+      ), linked_observations as (
+        insert into review_workspace.discovery_observations (lineage_id, source_observation_id)
+        select $3::uuid, id from observations on conflict do nothing
+      ), inserted_revision as (
+        insert into review_workspace.candidate_revisions
+          (resource_id, run_id, kind, before_values, proposed_values, provenance, supersedes_candidate_revision_id)
+        select null, $2::uuid, 'new_resource', '{}'::jsonb, $4::jsonb, $6::jsonb, previous.candidate_revision_id
+        from active_checkpoint left join previous on true cross join locked
+        returning id
+      ), linked_lineage as (
+        insert into review_workspace.candidate_revision_discovery_lineages (candidate_revision_id, lineage_id)
+        select id, $3::uuid from inserted_revision
+      ), updated_state as (
+        update review_workspace.candidate_current_state state
+        set candidate_revision_id = inserted_revision.id, revision = state.revision + 1,
+            status = 'staged', approved_field_paths = '[]'::jsonb, updated_at = now()
+        from inserted_revision, previous
+        where state.candidate_id = previous.candidate_id
+        returning state.candidate_id as id
+      ), inserted_state as (
+        insert into review_workspace.candidate_current_state
+          (candidate_revision_id, external_id, revision, status)
+        select id, 'discovery:' || $3::text, 1, 'staged' from inserted_revision
+        where not exists (select 1 from previous)
+        returning candidate_id as id
+      )
+      select id from updated_state union all select id from inserted_state
+    `, [input.leadId, input.runId, input.lineageId, JSON.stringify(input.proposedValues), JSON.stringify(observations), JSON.stringify(provenance), input.leaseToken]);
+    if (!rows[0]) throw new Error("An active leased discovery lead checkpoint is required before staging a candidate.");
     return (await this.get(rows[0].id))!;
   }
 
