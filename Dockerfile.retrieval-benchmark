@@ -1,0 +1,10 @@
+FROM mcr.microsoft.com/playwright:v1.62.1-noble
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY --chown=pwuser:pwuser src ./src
+COPY --chown=pwuser:pwuser scripts/run-retrieval-benchmark.ts ./scripts/run-retrieval-benchmark.ts
+USER pwuser
+
+ENTRYPOINT ["node", "--experimental-strip-types", "scripts/run-retrieval-benchmark.ts"]
