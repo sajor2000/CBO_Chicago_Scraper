@@ -70,6 +70,13 @@ test("provider HTTP failures are captured and never become a closure signal", as
   }
 });
 
+test("configured directory captures retain publisher-origin provenance", async () => {
+  const directory = new TrustedDirectoryClient({ endpoint: "https://directory.example/search", fetch: async () => Response.json({ results: [{ name: "Example Pantry", website: "https://pantry.example" }] }) });
+  const capture = await directory.search("Example Pantry");
+  assert.equal(capture.publisherUrl, "https://directory.example");
+  assert.equal(capture.sourceUrl, "https://pantry.example");
+});
+
 test("Google Places and Tavily return bounded, advisory observations", async () => {
   const google = new GooglePlacesClient({ apiKey: "secret", fetch: async () => Response.json({ places: [{ displayName: { text: "Example Pantry" }, formattedAddress: "1 Main St", nationalPhoneNumber: "+1 312-555-0100", websiteUri: "https://example.org", businessStatus: "CLOSED_PERMANENTLY" }] }) });
   const tavily = new TavilyClient({ apiKey: "secret", fetch: async () => Response.json({ results: [{ title: "Example Pantry", url: "https://example.org", content: "A community pantry" }] }) });
@@ -79,6 +86,36 @@ test("Google Places and Tavily return bounded, advisory observations", async () 
   assert.deepEqual(place.values, { name: "Example Pantry", address: "1 Main St", phone: "+1 312-555-0100", url: "https://example.org", businessStatus: "closed" });
   assert.equal(search.excerpt, "A community pantry");
   assert.equal(search.sourceUrl, "https://example.org");
+});
+
+test("discovery methods retain bounded ordered Google and fallback results", async () => {
+  let googleRequest: Request | undefined;
+  const google = new GooglePlacesClient({ apiKey: "secret", fetch: async (url, init) => {
+    googleRequest = new Request(url, init);
+    return Response.json({ places: [
+      { id: "place-1", displayName: { text: "Pantry One" }, formattedAddress: "1 Main St, Chicago, IL", addressComponents: [{ longText: "Cook County", types: ["administrative_area_level_2"] }], websiteUri: "https://one.example" },
+      { id: "place-2", displayName: { text: "Pantry Two" }, formattedAddress: "2 Main St, Wheaton, IL" },
+      { id: "place-3", displayName: { text: "Pantry Three" }, formattedAddress: "3 Main St, Joliet, IL" }
+    ] });
+  } });
+  const tavily = new TavilyClient({ apiKey: "secret", fetch: async () => Response.json({ request_id: "req-1", results: [
+    { title: "One", url: "https://one.example", content: "first" },
+    { title: "Two", url: "https://two.example", content: "second" },
+    { title: "Three", url: "https://three.example", content: "third" }
+  ] }) });
+
+  const places = await google.searchDiscovery("food pantry Cook County", { maxResults: 3 });
+  const hits = await tavily.searchDiscovery("food pantry Cook County", { maxResults: 2 });
+  assert.equal(places.length, 3);
+  assert.equal(places[0]?.values?.placeId, "place-1");
+  assert.equal(places[0]?.values?.county, "Cook");
+  assert.equal(hits.length, 2);
+  assert.equal(hits[1]?.rank, 2);
+  assert.equal(hits[0]?.requestId, "req-1");
+  assert.match(googleRequest?.headers.get("x-goog-fieldmask") ?? "", /places\.id/);
+  assert.match(googleRequest?.headers.get("x-goog-fieldmask") ?? "", /places\.addressComponents/);
+  assert.deepEqual(await googleRequest?.json(), { textQuery: "food pantry Cook County", pageSize: 3 });
+  await assert.rejects(() => google.searchDiscovery("x", { maxResults: 0 }), /between 1 and 5/);
 });
 
 test("Exa uses the configured discovery fallback without authorizing scrape targets", async () => {

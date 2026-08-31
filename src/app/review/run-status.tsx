@@ -8,8 +8,8 @@ export function RunStatus({ runs }: { runs: VerificationRun[] }) {
     <p>Operational history for troubleshooting. Use Resource reports above for the outcome of each listing.</p>
     {runs.length ? <ul className="candidate-list">
       {runs.map((run) => <li key={run.id} className="candidate-row">
-        <div className="candidate-main"><a href={`/review/runs/${run.id}`}>{label(run.status)}</a><span className={`status-chip status-${run.status}`}>{run.checkpoint} / {run.selection.length}</span></div>
-        <p className="candidate-meta">{run.report.recordsChecked} checked · {run.report.candidatesStaged} candidate(s) · {run.report.conflicts} conflict(s) · {run.report.unableToVerify} unable to verify · {run.report.providerFailures} provider failure(s)</p>
+        <div className="candidate-main"><a href={`/review/runs/${run.id}`}>{label(run.status)}</a><span className={`status-chip status-${run.status}`}>{run.mode === "discovery_only" ? "discovery" : `${run.checkpoint} / ${run.selection.length}`}</span></div>
+        <p className="candidate-meta">{run.mode === "discovery_only" ? "Manual discovery campaign — open for query, lead, disposition, and provider-call totals." : `${run.report.recordsChecked} checked · ${run.report.candidatesStaged} candidate(s) · ${run.report.conflicts} conflict(s) · ${run.report.unableToVerify} unable to verify · ${run.report.providerFailures} provider failure(s)`}</p>
       </li>)}
     </ul> : <p className="empty-queue">No verification runs have been recorded.</p>}
   </section>;

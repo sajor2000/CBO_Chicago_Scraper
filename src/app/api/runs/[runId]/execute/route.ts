@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { requireWorkspaceRole, WorkspaceAuthorizationError, WorkspaceTargetError } from "../../../../../lib/db.ts";
 import { executeCheckpoint } from "../../../../../lib/runs/execute-checkpoint.ts";
 import { RunLockError } from "../../../../../lib/runs/index.ts";
+import { runRegistry } from "../../../../../lib/runs/index.ts";
+import { executeDiscoveryCheckpoint } from "../../../../../lib/discovery/execute-checkpoint.ts";
 
 /** One hosted evidence checkpoint can take multiple provider round-trips. */
 export const maxDuration = 60;
@@ -17,7 +19,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ru
     if (!userId) return Response.json({ error: "Authentication required." }, { status: 401 });
     await requireWorkspaceRole(userId, "operator");
 
-    return Response.json(await executeCheckpoint(runId));
+    const run = await runRegistry.get(runId);
+    return Response.json(run?.mode === "discovery_only" ? await executeDiscoveryCheckpoint(runId) : await executeCheckpoint(runId));
   } catch (error) {
     const status = error instanceof WorkspaceAuthorizationError ? 403
       : error instanceof WorkspaceTargetError ? 503

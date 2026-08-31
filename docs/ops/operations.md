@@ -2,7 +2,7 @@
 
 ## Current boundary
 
-The app has durable Neon review/run repositories and a one-checkpoint hosted worker for manual runs or the guarded production Cron. It calls Firecrawl, Google Places, Tavily, optional approved IRS/directory endpoints, and Azure OpenAI only when the matching Vercel Production secrets are present. It never writes ChicagoHealthMap production. CI runs only `npm ci` and `npm run check`.
+The app has durable Neon review/run repositories and a one-checkpoint hosted worker for manual runs or the guarded production Cron. It calls Firecrawl, Google Places, Tavily, optional approved IRS evidence, and Azure OpenAI only when the matching Vercel Production secrets are present. Discovery additionally requires the configured approved trusted-directory endpoint before launch so generic search snippets can never satisfy corroboration. It never writes ChicagoHealthMap production. CI runs only `npm ci` and `npm run check`.
 
 ## Roles
 
@@ -32,3 +32,11 @@ Calibration begins only after explicit reviewer CBO-eligibility labels are avail
 ## Azure handoff gate
 
 Azure export remains disabled until the directory owner has supplied and approved the target table, primary key, optimistic version field, allowlisted column map, backup owner, and a schema-matched non-production database. The included SQL builder is not an export endpoint; enabling one requires the contract, an approved candidate-to-target mapping, test-copy rehearsal, and a downloadable artifact receipt. A generated SQL file is reviewed and applied manually by an Azure operator. Any target-version mismatch must roll back the transaction; the Vercel app has no Azure production credential.
+
+## Discovery controls and retention
+
+One manual discovery campaign may be active. Launches are rate-limited per operator, and provider calls are reserved atomically against a server-owned UTC-day ceiling. Failed attempts consume calls. Paused campaigns retain same-day allocation; after UTC rollover, resume must reserve fresh headroom. Retry only timeout, rate-limit, unavailable, and HTTP 5xx captures, with one-minute then five-minute backoff and three total attempts. Deactivation prevents new campaigns without erasing history.
+
+Retain minimal lineage, fingerprint, provider, sanitized URL, request ID, timestamps, state, and reasons. Do not retain full payloads, headers, HTML/Markdown, credentials, URL secrets, or non-candidate search excerpts. Candidate provenance may retain bounded redacted excerpts and the organization’s public main phone. Operators/reviewers receive only role-bounded provenance. Provider text is rendered as escaped text; clickable links require safe HTTP(S) URLs without userinfo. Firecrawl targets and returned canonical destinations pass DNS-aware public-address validation.
+
+Production release remains `.github/workflows/production.yml` or `npm run release:production`: stage Vercel without the production domain, apply/checksum/verify Neon migration 015, then promote and smoke-test. The previous app remains compatible because 015 is additive. Never deploy `main` directly and never run this migration against Azure/source tables.

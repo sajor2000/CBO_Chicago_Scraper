@@ -117,11 +117,12 @@ test("every completed resource has a durable, evidence-linked report surface", (
   assert.match(registry, /run_checkpoint_outcomes/);
 });
 
-test("operator workflow separates current audits from planned new-resource discovery", () => {
+test("operator workflow separates current audits from gated new-resource discovery", () => {
   const page = readFileSync(new URL("../src/app/review/page.tsx", import.meta.url), "utf8");
   assert.match(page, /Check current listings/);
   assert.match(page, /Find new resources/);
-  assert.match(page, /Backend lane next/);
+  assert.match(page, /Available when activated/);
+  assert.match(page, /DiscoveryControls/);
 });
 
 test("review provenance exposes only redacted, structured advisory evidence", () => {
