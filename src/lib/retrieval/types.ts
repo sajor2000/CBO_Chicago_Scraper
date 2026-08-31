@@ -7,6 +7,7 @@ export interface EvidenceValues {
   phone?: string;
   url?: string;
   businessStatus?: "open" | "closed" | "unknown";
+  placeId?: string;
 }
 
 export interface CapturedObservation {

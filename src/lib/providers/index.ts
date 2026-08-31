@@ -13,6 +13,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 const text = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : undefined;
 const record = (value: unknown): Json | undefined => value && typeof value === "object" && !Array.isArray(value) ? value as Json : undefined;
 const first = (value: unknown): Json | undefined => Array.isArray(value) ? record(value[0]) : undefined;
+const records = (value: unknown): Json[] => Array.isArray(value) ? value.flatMap((entry) => record(entry) ? [record(entry)!] : []) : [];
 const excerpt = (value: unknown) => text(value)?.slice(0, MAX_EXCERPT);
 const now = () => new Date().toISOString();
 
@@ -104,15 +105,34 @@ export class GooglePlacesClient {
     const status = text(place.businessStatus);
     return captured("google_places", "success", { sourceUrl: text(place.websiteUri), values: { name: text(record(place.displayName)?.text), address: text(place.formattedAddress), phone: text(place.nationalPhoneNumber), url: text(place.websiteUri), businessStatus: status === "CLOSED_PERMANENTLY" ? "closed" : status === "OPERATIONAL" ? "open" : "unknown" } });
   }
+  async discovery(query: string, maxResults = 5): Promise<ProviderCapture[]> {
+    if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 5) throw new Error("Discovery result caps must be between 1 and 5.");
+    const result = await requestJson(this.#fetch, "https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": this.#apiKey, "x-goog-fieldmask": "places.id,places.displayName,places.formattedAddress,places.addressComponents,places.nationalPhoneNumber,places.websiteUri,places.businessStatus,places.types" },
+      body: JSON.stringify({ textQuery: query, pageSize: maxResults })
+    });
+    const places = records(result.payload?.places).slice(0, maxResults);
+    if (!places.length) return [captured("google_places", result.state ?? "no_result")];
+    return places.map((place) => {
+      const status = text(place.businessStatus);
+      const placeId = text(place.id);
+      return captured("google_places", "success", { sourceUrl: text(place.websiteUri), values: { name: text(record(place.displayName)?.text), address: text(place.formattedAddress), phone: text(place.nationalPhoneNumber), url: text(place.websiteUri), businessStatus: status === "CLOSED_PERMANENTLY" ? "closed" : status === "OPERATIONAL" ? "open" : "unknown", ...(placeId ? { placeId } : {}) } });
+    });
+  }
 }
 
 export class TavilyClient {
   #apiKey: string; #fetch: Fetch;
   constructor(input: { apiKey: string; fetch?: Fetch }) { if (!input.apiKey) throw new Error("Tavily is not configured."); this.#apiKey = input.apiKey; this.#fetch = input.fetch ?? fetch; }
   async search(query: string, options: { maxResults?: number } = {}): Promise<ProviderCapture> {
-    const result = await requestJson(this.#fetch, "https://api.tavily.com/search", { method: "POST", headers: { authorization: `Bearer ${this.#apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ query, search_depth: "basic", max_results: Math.min(Math.max(options.maxResults ?? 3, 1), 5), include_answer: false, include_raw_content: false, safe_search: true }) });
-    const hit = first(result.payload?.results);
-    return hit ? captured("tavily", "success", { sourceUrl: text(hit.url), excerpt: excerpt(hit.content), values: { name: text(hit.title), url: text(hit.url) } }) : captured("tavily", result.state ?? "no_result");
+    return (await this.discovery(query, Math.min(Math.max(options.maxResults ?? 3, 1), 5)))[0] ?? captured("tavily", "no_result");
+  }
+  async discovery(query: string, maxResults = 3): Promise<ProviderCapture[]> {
+    if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 5) throw new Error("Discovery result caps must be between 1 and 5.");
+    const result = await requestJson(this.#fetch, "https://api.tavily.com/search", { method: "POST", headers: { authorization: `Bearer ${this.#apiKey}`, "content-type": "application/json" }, body: JSON.stringify({ query, search_depth: "basic", max_results: maxResults, include_answer: false, include_raw_content: false, safe_search: true }) });
+    const hits = records(result.payload?.results).slice(0, maxResults);
+    return hits.length ? hits.map((hit) => captured("tavily", "success", { sourceUrl: text(hit.url), excerpt: excerpt(hit.content), values: { name: text(hit.title), url: text(hit.url) } })) : [captured("tavily", result.state ?? "no_result")];
   }
 }
 
@@ -120,14 +140,20 @@ export class ExaClient {
   #apiKey: string; #fetch: Fetch;
   constructor(input: { apiKey: string; fetch?: Fetch }) { if (!input.apiKey) throw new Error("Exa is not configured."); this.#apiKey = input.apiKey; this.#fetch = input.fetch ?? fetch; }
   async search(query: string, options: { maxResults?: number } = {}): Promise<ProviderCapture> {
+    return (await this.discovery(query, Math.min(Math.max(options.maxResults ?? 3, 1), 5)))[0] ?? captured("search_fallback", "no_result");
+  }
+  async discovery(query: string, maxResults = 3): Promise<ProviderCapture[]> {
+    if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 5) throw new Error("Discovery result caps must be between 1 and 5.");
     const result = await requestJson(this.#fetch, "https://api.exa.ai/search", {
       method: "POST",
       headers: { "x-api-key": this.#apiKey, "content-type": "application/json" },
-      body: JSON.stringify({ query, type: "fast", numResults: Math.min(Math.max(options.maxResults ?? 3, 1), 5), moderation: true, contents: { highlights: true } })
+      body: JSON.stringify({ query, type: "fast", numResults: maxResults, moderation: true, contents: { highlights: true } })
     });
-    const hit = first(result.payload?.results);
-    const highlight = Array.isArray(hit?.highlights) ? hit.highlights.find((value): value is string => typeof value === "string") : undefined;
-    return hit ? captured("search_fallback", "success", { sourceUrl: text(hit.url), excerpt: excerpt(highlight) ?? excerpt(hit.text), values: { name: text(hit.title), url: text(hit.url) } }) : captured("search_fallback", result.state ?? "no_result");
+    const hits = records(result.payload?.results).slice(0, maxResults);
+    return hits.length ? hits.map((hit) => {
+      const highlight = Array.isArray(hit.highlights) ? hit.highlights.find((value): value is string => typeof value === "string") : undefined;
+      return captured("search_fallback", "success", { sourceUrl: text(hit.url), excerpt: excerpt(highlight) ?? excerpt(hit.text), values: { name: text(hit.title), url: text(hit.url) } });
+    }) : [captured("search_fallback", result.state ?? "no_result")];
   }
 }
 

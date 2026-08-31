@@ -94,6 +94,16 @@ test("Exa uses the configured discovery fallback without authorizing scrape targ
   assert.deepEqual(await request?.json(), { query: "Example Pantry Chicago", type: "fast", numResults: 5, moderation: true, contents: { highlights: true } });
 });
 
+test("discovery methods preserve bounded provider result arrays", async () => {
+  const google = new GooglePlacesClient({ apiKey: "secret", fetch: async () => Response.json({ places: [
+    { id: "place-a", displayName: { text: "A" }, formattedAddress: "1 Main", addressComponents: [{ longText: "Cook" }] },
+    { id: "place-b", displayName: { text: "B" }, formattedAddress: "2 Main" }
+  ] }) });
+  const results = await google.discovery("pantry Cook", 2);
+  assert.deepEqual(results.map((result) => result.values?.placeId), ["place-a", "place-b"]);
+  await assert.rejects(google.discovery("pantry", 6));
+});
+
 test("GPT audit input retains bounded structured provider evidence", () => {
   const evidence = formatAuditEvidence([
     { provider: "google_places", state: "success", observedAt: "2026-08-13T00:00:00Z", sourceUrl: "https://example.org", values: { name: "Example Pantry", address: "1 Main St", phone: "+1 312-555-0100", businessStatus: "closed" } },

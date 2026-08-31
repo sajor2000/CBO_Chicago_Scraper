@@ -4,6 +4,16 @@ import test from "node:test";
 
 const migration = (name: string) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8");
 
+test("discovery migration is additive, review-only, and ledger-gated", () => {
+  const schema = migration("015_discovery_lane.sql");
+  const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
+  for (const table of ["discovery_lineages", "discovery_evaluations", "discovery_observations", "discovery_activations", "candidate_revision_discovery_lineages"]) assert.match(schema, new RegExp(`review_workspace\\.${table}`, "i"));
+  assert.match(schema, /one_active_discovery_activation/i);
+  assert.match(schema, /accepted_cycle_id is not null/i);
+  assert.match(runner, /015_discovery_lane\.sql/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14, 15\)/);
+});
+
 test("review workspace persists immutable, traceable review records", () => {
   const schema = migration("001_review_workspace.sql");
 
@@ -120,7 +130,7 @@ test("CBO eligibility review migration adds only the human-review candidate kind
   const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
   assert.match(schema, /eligibility_review/);
   assert.match(runner, /012_cbo_eligibility_review\.sql/);
-  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14\)/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14, 15\)/);
 });
 
 test("eligibility decisions are not export approvals", () => {
@@ -199,7 +209,7 @@ test("mirror-copy groundwork fences idempotent refresh requests before table-cop
   assert.match(schema, /manifest_id uuid unique references review_workspace\.refresh_manifests/i);
   assert.match(schema, /before delete on review_workspace\.refresh_requests/i);
   assert.match(runner, /010_cbo_mirror_copy\.sql/);
-  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14\)/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14, 15\)/);
 });
 
 test("pause preserves an active lease until its fenced completion", () => {

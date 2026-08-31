@@ -1,5 +1,9 @@
 # Operator runbook
 
+## Discovery lane (manual only)
+
+Activate discovery only after an accepted completed directory cycle and service-owner approval of the checked-in query policy. Start with at most two cells and 10 leads; reconcile every disposition. Deactivate by appending an inactive activation event. Do not schedule discovery, write source tables, or export approved discoveries to Azure.
+
 Clerk controls access through a signed-in account whose subject has an active `operator` grant in the review workspace. Start a dry run through `POST /api/runs` with a unique idempotency key, bounded source selection, and budget. Repeating the same key returns the same run. Use `PATCH /api/runs` to cancel or resume; completion advances one durable checkpoint at a time. Cancelling releases an unfinished lease; a stale worker cannot complete it.
 
 Vercel production invokes `GET /api/cron` every five minutes when `CRON_SECRET`, provider credentials, and a ready workspace are configured. It requires `CRON_SECRET`: Vercel sends it as a bearer token and the endpoint rejects missing or invalid authorization. Each invocation starts or resumes the current UTC-month cohort and processes one durably leased record, so invocations cannot overlap work. This schedule needs a Vercel Pro or Enterprise project; Vercel does not activate cron for preview deployments. It performs real public-provider requests and writes review candidates only—never a production directory publish or automatic closure. Canary acceptance is an operator-controlled deployment prerequisite, not a runtime gate: only the authorized operator may configure the candidate provider for the canary, and do not rely on the schedule until it has passed. The review app uses the dedicated Neon review workspace only; its startup connection must find `review_workspace.workspace_sentinel` with `workspace_kind = dedicated_review_workspace` before hosted use.
