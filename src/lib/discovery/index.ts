@@ -15,7 +15,7 @@ export function resolveDiscoveryLead(lead: DiscoveryLead, existing: readonly Exi
   const ambiguous = existing.filter((item) => {
     const itemAddress = normalize(item.address);
     if (lead.placeId && item.placeId === lead.placeId) return true;
-    if (address && itemAddress === address) return !(name && name === normalize(item.name)) && !(leadDomain && leadDomain === domain(item.url)) && !(phone && phone === normalize(item.phone));
+    if (address && itemAddress === address) return Boolean((name && name === normalize(item.name)) || (leadDomain && leadDomain === domain(item.url)) || (phone && phone === normalize(item.phone)));
     return Boolean((leadDomain && leadDomain === domain(item.url)) || (phone && phone === normalize(item.phone)) || (name && name === normalize(item.name)));
   });
   if (ambiguous.length) return { disposition: "possible_duplicate", reasons: ["Location-level identity is ambiguous."], matchedIds: ambiguous.map(({ id }) => id) };

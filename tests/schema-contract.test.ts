@@ -8,7 +8,8 @@ test("discovery migration is additive, review-only, and ledger-gated", () => {
   const schema = migration("015_discovery_lane.sql");
   const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
   for (const table of ["discovery_lineages", "discovery_evaluations", "discovery_observations", "discovery_activations", "candidate_revision_discovery_lineages"]) assert.match(schema, new RegExp(`review_workspace\\.${table}`, "i"));
-  assert.match(schema, /one_active_discovery_activation/i);
+  assert.match(schema, /discovery_activation_current/i);
+  assert.match(schema, /apply_discovery_activation/i);
   assert.match(schema, /accepted_cycle_id is not null/i);
   assert.match(runner, /015_discovery_lane\.sql/);
   assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14, 15\)/);
