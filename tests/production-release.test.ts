@@ -36,3 +36,8 @@ test("the main-branch workflow cannot promote before Neon verification", () => {
   assert.match(workflow, /workflow_run\.head_repository\.full_name == github\.repository/);
   assert.doesNotMatch(workflow, /uses: actions\/(checkout|setup-node)@v\d/);
 });
+
+test("Vercel invokes one guarded checkpoint weekly", () => {
+  const vercel = readFileSync(new URL("../vercel.json", import.meta.url), "utf8");
+  assert.match(vercel, /"schedule": "0 0 \* \* 0"/);
+});
