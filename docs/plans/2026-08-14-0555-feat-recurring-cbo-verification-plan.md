@@ -306,34 +306,7 @@ stateDiagram-v2
 
 ### U4. Build the later durable new-resource discovery lane
 
-**Goal:** Turn bounded, approved searches into explainable potential-resource reviews without contaminating existing-resource verification or the copied source tables.
-
-**Requirements:** R4, R6, R9.
-
-**Dependencies:** U1, U2, U3, U5. U3/U5 deliver and accept the known-directory bulk release first; this unit adds discovery only after staff can operate and review a completed existing-resource cycle.
-
-**Files:** `migrations/012_discovery_lane.sql`, `src/lib/domain/review-workspace.ts`, `src/lib/providers/hosted-evidence.ts`, `src/lib/verification/run-checkpoint.ts`, `src/lib/verification/index.ts`, `src/lib/repositories/review.ts`, `src/lib/taxonomy/categories.ts`, `tests/hosted-evidence.test.ts`, `tests/verification-workflow.test.ts`, `tests/run-checkpoint.test.ts`, `tests/discovery-lane.test.ts`.
-
-**Approach:**
-
-1. Persist versioned discovery queries, lead fingerprints, source observations, policy version, and dispositions separately from copied resource identities. A discovery checkpoint has exactly one target—either a frozen existing membership or a lead—and one active lineage per normalized fingerprint/source-scope version.
-2. Before the first discovery run, persist a reviewed query/source matrix covering the selected taxonomy categories and seven counties, with per-query caps and a coverage/yield report. Use the existing Tavily/Google discovery paths only to find leads or official URLs, then collect public evidence through the ordinary provider policy. Add another search provider only after a measured discovery-quality gap and an explicit provider decision; a low/zero credible-lead yield is a visible service-owner decision, not a healthy silent completion.
-3. Deduplicate each lead against copied CBO/WIC records, Google place identity, prior open leads, and prior reviewer dispositions before advisory scoring.
-4. Stage only credible, unmatched, in-scope leads as a `new_resource` candidate with UI label `potential_new_resource`; link it to its immutable lead/evidence lineage rather than `candidate_revision_snapshot_links`, which remains for existing copied resources. Retain rejected, duplicate, out-of-scope, and insufficient-evidence results in the run report instead of the reviewer candidate list. Discovery has a separate provider budget and cannot starve due existing-resource adjudication.
-
-**Patterns to follow:** `potential_new_resource` semantics in `src/lib/verification/index.ts`, source-policy boundaries in `docs/source-policy.md`, and governed category lookup in `src/lib/taxonomy/categories.ts`.
-
-**Test scenarios:**
-
-- A trusted lead matching current name/address/phone links to the existing record and cannot create a new resource candidate.
-- A credible unmatched food pantry or clinic within the defined counties stages exactly one potential-resource candidate with sources and advisory rationale.
-- A for-profit clinic, worship-only site, advocacy-only nonprofit, out-of-region lead, or prompt-injection text is recorded as non-actionable.
-- Repeated discovery query runs deduplicate previously adjudicated leads unless material evidence changes.
-- Concurrent discovery retries and a later exact match to a seeded record retain one lead lineage and create no copied-table write.
-- A search result alone cannot create a category, closure, copied table row, or reviewer-approved resource.
-- The discovery report identifies each approved query's category/county/source coverage, deduplication count, credible-lead yield, and a zero-yield review decision when applicable.
-
-**Verification:** Discovery fixtures prove the end-to-end lead state machine and reviewer queue receives only actionable unmatched leads.
+**Superseded:** `docs/plans/2026-08-30-001-feat-new-resource-discovery-plan.md` is the authoritative implementation plan for this unit. It preserves R4, R6, and R9, updates the migration to version 15, and defines the current repository's discovery checkpoint, identity, review, and rollout contracts. Do not implement the stale migration or file list formerly recorded here.
 
 ### U5. Deliver an operator console and reviewer audit workflow
 
