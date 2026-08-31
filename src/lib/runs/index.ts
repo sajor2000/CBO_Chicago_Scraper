@@ -49,6 +49,10 @@ export class RunLockError extends Error {
   }
 }
 
+export class NoScheduledWorkError extends Error {
+  constructor(){super("No due known-resource work is available.");this.name="NoScheduledWorkError";}
+}
+
 const blankReport = (): RunReport => ({ recordsChecked: 0, candidatesStaged: 0, conflicts: 0, unableToVerify: 0, providerFailures: 0, budgetUsed: 0 });
 const copy = (run: VerificationRun) => structuredClone(run);
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -307,7 +311,7 @@ export class NeonRunRegistry {
         and (due.next_due_at is null or due.next_due_at <= $1)
       order by membership.resource_id
     `, [now.toISOString()]);
-    if (!memberships.length) throw new Error("A promoted reconciled refresh with due resources is required.");
+    if (!memberships.length) throw new NoScheduledWorkError();
     const key = scheduledRunKey();
     return this.#launch({ idempotencyKey: key, selection: memberships.map(({ resource_id }) => resource_id), memberships: memberships.map(({ resource_id, resource_snapshot_id }) => ({ resourceId: resource_id, snapshotId: resource_snapshot_id })), manifestId: memberships[0]!.manifest_id, budget: memberships.length, mode: "scheduled_cycle", triggerKind: "scheduled", maximumSelection: 10_000 });
   }

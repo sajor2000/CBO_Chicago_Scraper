@@ -1,5 +1,5 @@
 export type Provider = "firecrawl" | "google_places" | "local_directory" | "irs" | "search_fallback" | "tavily" | "trusted_directory";
-export type RetrievalState = "success" | "no_result" | "blocked" | "timeout" | "rate_limited" | "malformed";
+export type RetrievalState = "success" | "no_result" | "blocked" | "timeout" | "rate_limited" | "unavailable" | "malformed";
 
 export interface EvidenceValues {
   name?: string;
@@ -7,6 +7,8 @@ export interface EvidenceValues {
   phone?: string;
   url?: string;
   businessStatus?: "open" | "closed" | "unknown";
+  placeId?: string;
+  county?: string;
 }
 
 export interface CapturedObservation {
@@ -14,8 +16,11 @@ export interface CapturedObservation {
   state: RetrievalState;
   observedAt: string;
   sourceUrl?: string;
+  publisherUrl?: string;
   excerpt?: string;
   values?: EvidenceValues;
+  rank?: number;
+  requestId?: string;
 }
 
 export const normalizeEvidenceText = (value?: string) => value?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";

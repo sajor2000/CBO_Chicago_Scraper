@@ -8,6 +8,10 @@ import { RunControls } from "./run-controls.tsx";
 import { RunStatus } from "./run-status.tsx";
 import { CalibrationSummary } from "./calibration-summary.tsx";
 import { SiteReports } from "./site-reports.tsx";
+import { DiscoveryControls } from "./discovery-controls.tsx";
+import { discoveryRepository } from "../../lib/discovery/repository.ts";
+import { DISCOVERY_QUERY_POLICY_VERSION, discoveryCounties } from "../../lib/discovery/query-matrix.ts";
+import { categoryCodes } from "../../lib/taxonomy/categories.ts";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 const statusLabel = (status: string) => status.replace(/_/g, " ");
@@ -69,6 +73,8 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   let calibration: Awaited<ReturnType<typeof reviewRepository.calibrationSummary>> = [];
   let dueCount = 0;
   let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
+  let discoveryActivation: Awaited<ReturnType<typeof discoveryRepository.activation>>;
+  let completedCycles: Awaited<ReturnType<typeof discoveryRepository.completedKnownCycles>> = [];
   if (isOperator) {
     readiness = await verificationReadiness();
     if (readiness.ready) {
@@ -84,6 +90,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
       siteReports = loadedReports;
       calibration = loadedCalibration;
       dueCount = preview?.dueCount ?? 0;
+      [discoveryActivation, completedCycles] = await Promise.all([discoveryRepository.activation(), discoveryRepository.completedKnownCycles()]);
     }
   }
 
@@ -116,7 +123,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         <span className="step-number">3</span>
         <h2>Find new resources</h2>
         <p>A separate discovery run will search approved Chicagoland categories, deduplicate leads, and send credible new resources to human review.</p>
-        <span className="availability planned">Backend lane next</span>
+        <span className="availability active">Available when activated</span>
       </article>
     </section> : null}
 
@@ -129,6 +136,8 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         </section>
         : <RunControls resources={resources} dueCount={dueCount} />
     )}
+
+    {isOperator && readiness?.ready ? <DiscoveryControls activation={discoveryActivation} completedCycles={completedCycles} categories={categoryCodes} counties={discoveryCounties} policyVersion={DISCOVERY_QUERY_POLICY_VERSION} /> : null}
 
     {isOperator && <SiteReports reports={siteReports} />}
     {isOperator && <RunStatus runs={runs} />}

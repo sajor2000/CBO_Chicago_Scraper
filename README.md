@@ -64,10 +64,11 @@ The checked-in five-minute Vercel Cron schedule invokes one checkpoint for the m
 ```text
 src/app/                 Clerk-protected review UI and API routes
 src/lib/providers/       Firecrawl, Google Places, Tavily, IRS, directory adapters
-src/lib/verification/    Deterministic evidence checks and checkpoint workflow
+src/lib/verification/    Deterministic known-resource checks and checkpoint workflow
+src/lib/discovery/       Versioned manual discovery, identity gates, budgets, and reports
 src/lib/repositories/    Neon review/audit persistence
 src/lib/ai/              Azure OpenAI advisory scorer
-migrations/              Ordered Neon review-workspace migrations (001–006 applied via npm script; apply 007/008 explicitly)
+migrations/              Ordered additive Neon review-workspace migrations; current required version is 015
 scripts/                 Source profiling and baseline import commands
 sql/source/              Read-only source view definitions for the Neon mirror
 tests/                   Node contract and workflow tests
@@ -106,6 +107,12 @@ npm run build   # Production Next.js build
 5. Review the evidence and candidate UX before widening the batch.
 6. Run the documented ten-resource canary one checkpoint at a time. Stop on the runbook thresholds before retaining the candidate configuration or relying on the guarded production Cron schedule.
 7. Build/test the manual Azure patch handoff only after the Azure schema/key/version contract and a non-production target are available.
+
+## New-resource discovery boundary
+
+Discovery is manual, separately activated, and capped. An operator must reference a completed accepted known-directory cycle, the repository query-policy version, a daily provider-call ceiling, a rationale, and service-owner approval. Each campaign freezes at most ten reviewed query cells and at most 50 unique leads. Known-resource checkpoints retain Cron priority.
+
+Search results are leads, not evidence. Exact in-scope service address, direct service delivery, CBO eligibility, deterministic duplicate screening, and independent corroboration are required before a `new_resource` candidate is staged. AI is advisory and may be unavailable. Approval displays **Awaiting map handoff**; no new-row Azure export/insertion or scheduled discovery exists.
 
 ## Cursor handoff
 

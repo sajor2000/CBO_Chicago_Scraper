@@ -15,10 +15,14 @@ export type ReviewProvenance = {
     state: string;
     observedAt: string;
     sourceUrl?: string;
+    publisherUrl?: string;
     excerpt?: string;
     values?: FieldValues;
   }>;
   advisory?: Pick<AiAdvisory, "promptVersion" | "cboEligibility" | "operationalAssessment" | "evidenceQuality" | "citations" | "suggestedCategory" | "rationale">;
+  advisoryState?: "not_requested" | "available" | "advisory_unavailable";
+  duplicateScreen?: unknown;
+  mapHandoff?: "awaiting";
 };
 
 export interface ReviewCandidate {
@@ -175,6 +179,22 @@ type CandidateRow = {
 };
 
 const stringValue = (value: unknown) => typeof value === "string" ? redactEvidence(value).slice(0, 6000) : undefined;
+const boundedHttpUrl = (value: unknown) => {
+  try { const url=typeof value==="string"?new URL(redactEvidence(value)):undefined;if(!url||!['http:','https:'].includes(url.protocol)||url.username||url.password)return undefined;url.search="";url.hash="";return url.toString().slice(0,500); }
+  catch{return undefined;}
+};
+const boundedPublicValues = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).flatMap(([key, item]) => {
+    if (typeof item !== "string") return [];
+    let safe = redactEvidence(item).slice(0, 500);
+    if (key === "url" || key === "website") {
+      try { const url = new URL(safe); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return []; url.search = ""; url.hash = ""; safe = url.toString(); }
+      catch { return []; }
+    }
+    return [[key, safe]];
+  }));
+};
 const fieldValues = (value: unknown): FieldValues | undefined => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const entries = Object.entries(value).flatMap(([key, entry]) => {
@@ -195,16 +215,18 @@ export const reviewProvenance = (value: unknown): ReviewProvenance => {
     const observedAt = stringValue(observation.observedAt);
     if (!provider || !state || !observedAt) return [];
     const values = fieldValues(observation.values);
-    return [{ provider, state, observedAt, sourceUrl: stringValue(observation.sourceUrl), excerpt: stringValue(observation.excerpt), ...(values ? { values } : {}) }];
+    return [{ provider, state, observedAt, sourceUrl: boundedHttpUrl(observation.sourceUrl), publisherUrl: boundedHttpUrl(observation.publisherUrl), excerpt: stringValue(observation.excerpt), ...(values ? { values } : {}) }];
   }) : [];
   const rawAdvisory = source.advisory && typeof source.advisory === "object" && !Array.isArray(source.advisory) ? source.advisory as Record<string, unknown> : undefined;
-  if (!rawAdvisory) return { observations };
+  const advisoryState: ReviewProvenance["advisoryState"] = source.advisoryState === "available" || source.advisoryState === "advisory_unavailable" || source.advisoryState === "not_requested" ? source.advisoryState : undefined;
+  const base = { observations, advisoryState, duplicateScreen: source.duplicateScreen, mapHandoff: source.mapHandoff === "awaiting" ? "awaiting" as const : undefined };
+  if (!rawAdvisory) return base;
   const citations = Array.isArray(rawAdvisory.citations) ? rawAdvisory.citations.flatMap((citation) => {
     const redacted = stringValue(citation);
     return redacted ? [redacted] : [];
   }) : undefined;
   return {
-    observations,
+    ...base,
     advisory: {
       promptVersion: stringValue(rawAdvisory.promptVersion),
       cboEligibility: rawAdvisory.cboEligibility === "confirmed_cbo" || rawAdvisory.cboEligibility === "likely_cbo" || rawAdvisory.cboEligibility === "not_a_cbo" || rawAdvisory.cboEligibility === "insufficient_evidence" ? rawAdvisory.cboEligibility : undefined,
@@ -255,7 +277,7 @@ const candidateSelect = `
     state.revision,
     state.status,
     revision.kind,
-    ${snapshotNameExpression} as resource_name,
+    coalesce(${snapshotNameExpression}, nullif(revision.proposed_values->>'organization_name', ''), nullif(revision.proposed_values->>'location_name', ''), nullif(revision.proposed_values->>'name', '')) as resource_name,
     revision.proposed_values,
     revision.before_values,
     state.approved_field_paths,
@@ -470,6 +492,11 @@ export class NeonReviewRepository {
         select inserted_revision.id, link.resource_snapshot_id
         from inserted_revision join previous on true
         join review_workspace.candidate_revision_snapshot_links link on link.candidate_revision_id = previous.candidate_revision_id
+      ), linked_discovery as (
+        insert into review_workspace.candidate_revision_discovery_links (candidate_revision_id, evaluation_id)
+        select inserted_revision.id, link.evaluation_id
+        from inserted_revision join previous on true
+        join review_workspace.candidate_revision_discovery_links link on link.candidate_revision_id = previous.candidate_revision_id
       ), updated as (
         update review_workspace.candidate_current_state state
         set candidate_revision_id = inserted_revision.id, revision = state.revision + 1,
@@ -486,6 +513,59 @@ export class NeonReviewRepository {
     return (await this.get(rows[0].id))!;
   }
 
+  async stageDiscoveryCandidate(input: {
+    runId: string;
+    evaluationId: string;
+    leaseToken: string;
+    proposedValues: FieldValues;
+    observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; publisherUrl?: string; excerpt?: string; values?: unknown }>;
+    advisory?: AiAdvisory;
+    advisoryUnavailable?: boolean;
+    duplicateScreen: unknown;
+  }): Promise<ReviewCandidate> {
+    const safeObservations = input.observations.map(({ excerpt, values, sourceUrl, publisherUrl, ...observation }) => ({ ...observation, sourceUrl: boundedHttpUrl(sourceUrl), publisherUrl: boundedHttpUrl(publisherUrl), values: boundedPublicValues(values), excerpt: excerpt && redactEvidence(excerpt).slice(0, 6000) }));
+    const provenance = { observations: safeObservations, advisory: input.advisory, advisoryState: input.advisoryUnavailable ? "advisory_unavailable" : input.advisory ? "available" : "not_requested", duplicateScreen: input.duplicateScreen, mapHandoff: "awaiting" };
+    const rows = await this.#query<{ id: string }>(`
+      with locked as (select pg_advisory_xact_lock(hashtextextended($2::text, 0))), active_checkpoint as (
+        select checkpoint.run_id from review_workspace.run_checkpoints checkpoint
+        join review_workspace.run_current_state state on state.run_id=checkpoint.run_id cross join locked
+        where checkpoint.run_id=$1::uuid and checkpoint.discovery_evaluation_id=$2::uuid and checkpoint.lease_token=$3::uuid
+          and checkpoint.state='leased' and checkpoint.lease_expires_at>now() and state.status in ('running','paused')
+      ), existing as (
+        select state.candidate_id, state.candidate_revision_id from review_workspace.candidate_current_state state
+        join review_workspace.candidate_revision_discovery_links link on link.candidate_revision_id=state.candidate_revision_id
+        where link.evaluation_id=$2::uuid
+      ), inserted_revision as (
+        insert into review_workspace.candidate_revisions (resource_id, run_id, kind, before_values, proposed_values, provenance)
+        select null, $1::uuid, 'new_resource', '{}'::jsonb, $4::jsonb, $6::jsonb from active_checkpoint
+        where not exists(select 1 from existing) returning id
+      ), linked as (
+        insert into review_workspace.candidate_revision_discovery_links (candidate_revision_id, evaluation_id)
+        select id, $2::uuid from inserted_revision
+      ), observation_entries as (
+        select entry,coalesce(entry->>'sourceUrl',entry->>'provider')||':'||(entry->>'observedAt') observation_key from jsonb_array_elements($5::jsonb) entry
+      ), inserted_observations as (
+        insert into review_workspace.source_observations (run_id, provider, observation_key, observed_at, extracted_values, retrieval_metadata)
+        select $1::uuid, entry->>'provider', observation_key, (entry->>'observedAt')::timestamptz,
+          coalesce(entry->'values','{}'::jsonb), jsonb_build_object('state',entry->>'state','sourceUrl',entry->>'sourceUrl','publisherUrl',entry->>'publisherUrl','excerpt',entry->>'excerpt')
+        from observation_entries cross join active_checkpoint
+        on conflict (provider,observation_key,observed_at) do nothing
+        returning id
+      ), observations as (
+        select id from inserted_observations union select observation.id from observation_entries entry join review_workspace.source_observations observation
+          on observation.provider=entry.entry->>'provider' and observation.observation_key=entry.observation_key and observation.observed_at=(entry.entry->>'observedAt')::timestamptz
+      ), linked_observations as (
+        insert into review_workspace.discovery_lead_observations (evaluation_id,source_observation_id)
+        select $2::uuid,id from observations on conflict do nothing
+      ), inserted_state as (
+        insert into review_workspace.candidate_current_state (candidate_revision_id, external_id, revision, status)
+        select id, 'discovery:'||$2::text, 1, 'staged' from inserted_revision returning candidate_id as id
+      ) select id from inserted_state union all select candidate_id from existing limit 1
+    `,[input.runId,input.evaluationId,input.leaseToken,JSON.stringify(input.proposedValues),JSON.stringify(safeObservations),JSON.stringify(provenance)]);
+    if(!rows[0]) throw new Error("An active leased discovery checkpoint is required before staging a candidate.");
+    return (await this.get(rows[0].id))!;
+  }
+
   async stageVerification(input: {
     resourceId: string;
     runId: string;
@@ -496,7 +576,7 @@ export class NeonReviewRepository {
     observations: Array<{ provider: string; state: string; observedAt: string; sourceUrl?: string; excerpt?: string; values?: unknown }>;
     advisory?: AiAdvisory;
   }): Promise<ReviewCandidate> {
-    const observations = input.observations.map(({ excerpt, ...observation }) => ({ ...observation, excerpt: excerpt && redactEvidence(excerpt).slice(0, 6000) }));
+    const observations = input.observations.map(({ excerpt, values, ...observation }) => ({ ...observation, values: boundedPublicValues(values), excerpt: excerpt && redactEvidence(excerpt).slice(0, 6000) }));
     const provenance = {
       evidence: observations.map((observation) => observation.sourceUrl ?? `${observation.provider}: ${observation.state}`),
       observations,

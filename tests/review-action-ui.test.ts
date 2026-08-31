@@ -20,6 +20,15 @@ test("review detail renders field-level actions through the protected API", () =
   assert.match(actions, /no longer accepts review actions/);
 });
 
+test("approved discoveries remain awaiting map handoff with no publish action",()=>{
+  const page=readFileSync(new URL("../src/app/review/[candidateId]/page.tsx",import.meta.url),"utf8");
+  const provenance=readFileSync(new URL("../src/app/review/review-provenance.tsx",import.meta.url),"utf8");
+  assert.match(page,/Awaiting map handoff/);
+  assert.match(page,/no Azure insert or export/);
+  assert.match(provenance,/advisory_unavailable/);
+  assert.match(provenance,/noopener noreferrer/);
+});
+
 test("a closure conflict requires a separate closed-status proposal and approval", () => {
   const actions = readFileSync(new URL("../src/app/review/review-actions.tsx", import.meta.url), "utf8");
   const detail = readFileSync(new URL("../src/app/review/[candidateId]/page.tsx", import.meta.url), "utf8");

@@ -120,7 +120,7 @@ test("CBO eligibility review migration adds only the human-review candidate kind
   const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
   assert.match(schema, /eligibility_review/);
   assert.match(runner, /012_cbo_eligibility_review\.sql/);
-  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14\)/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14, 15\)/);
 });
 
 test("eligibility decisions are not export approvals", () => {
@@ -138,12 +138,31 @@ test("the runtime role can read only the migration ledger", () => {
   assert.match(runner, /014_migration_ledger_runtime_access\.sql/);
 });
 
+test("discovery migration is additive, typed, auditable, and release-gated", () => {
+  const schema = migration("015_discovery_lane.sql");
+  const runner = readFileSync(new URL("../scripts/apply-review-migrations.ts", import.meta.url), "utf8");
+  const version = readFileSync(new URL("../src/lib/review-schema.ts", import.meta.url), "utf8");
+  for (const table of ["discovery_activation_events", "discovery_activation_state", "discovery_query_cells", "discovery_query_executions", "discovery_run_events", "discovery_lineages", "discovery_evaluations", "discovery_disposition_events", "discovery_lead_observations", "discovery_daily_budgets", "candidate_revision_discovery_links"]) {
+    assert.match(schema, new RegExp(`create table (if not exists )?review_workspace\\.${table}`, "i"));
+  }
+  assert.match(schema, /query_cell_id uuid references review_workspace\.discovery_query_cells/i);
+  assert.match(schema, /discovery_evaluation_id uuid references review_workspace\.discovery_evaluations/i);
+  assert.match(schema, /exactly_one_discovery_checkpoint_target/i);
+  assert.match(schema, /one_active_discovery_campaign/i);
+  assert.match(schema, /before update or delete on review_workspace\.discovery_disposition_events/i);
+  assert.match(runner, /015_discovery_lane\.sql/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14, 15\)/);
+  assert.match(version, /REQUIRED_REVIEW_SCHEMA_VERSION = 15/);
+});
+
 test("candidate staging serializes concurrent revisions for one resource", () => {
   const repository = readFileSync(new URL("../src/lib/repositories/review.ts", import.meta.url), "utf8");
   assert.match(repository, /pg_advisory_xact_lock\(hashtextextended\(\$1::text, 0\)\)/);
   assert.match(repository, /cross join locked/);
   assert.match(repository, /active_checkpoint/);
   assert.match(repository, /checkpoint\.lease_token = \$8::uuid/);
+  assert.match(repository, /linked_discovery/);
+  assert.match(repository, /candidate_revision_discovery_links link on link\.candidate_revision_id = previous\.candidate_revision_id/);
 });
 
 test("durable runs reject unseeded selections and record execution failures", () => {
@@ -199,7 +218,7 @@ test("mirror-copy groundwork fences idempotent refresh requests before table-cop
   assert.match(schema, /manifest_id uuid unique references review_workspace\.refresh_manifests/i);
   assert.match(schema, /before delete on review_workspace\.refresh_requests/i);
   assert.match(runner, /010_cbo_mirror_copy\.sql/);
-  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14\)/);
+  assert.match(runner, /version in \(4, 9, 10, 11, 12, 13, 14, 15\)/);
 });
 
 test("pause preserves an active lease until its fenced completion", () => {
