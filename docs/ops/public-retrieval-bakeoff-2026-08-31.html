@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Public retrieval bake-off — 2026-08-31</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #f4f7fb; color: #162033; }
+    body { margin: 0; padding: 3rem 1.25rem; } main { max-width: 960px; margin: auto; background: #fff; padding: clamp(1.5rem, 5vw, 4rem); border-radius: 18px; box-shadow: 0 12px 40px #1524451a; }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.25rem); letter-spacing: -.05em; } h2 { margin-top: 2.5rem; } p, li { line-height: 1.6; } .eyebrow { color: #526176; font-weight: 700; text-transform: uppercase; font-size: .75rem; letter-spacing: .12em; }
+    .winner { background: #e9f9ef; border: 1px solid #7ed69d; padding: 1rem 1.25rem; border-radius: 12px; margin-top: 1.5rem; } .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin: 1.25rem 0; }
+    .card { border: 1px solid #dbe2ec; border-radius: 12px; padding: 1rem; } .card strong { display: block; font-size: 1.85rem; margin-top: .3rem; } .card.winner-card { border: 2px solid #27884b; background: #f4fff7; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; } th, td { padding: .8rem .55rem; text-align: right; border-bottom: 1px solid #dbe2ec; } th:first-child, td:first-child { text-align: left; } th { color: #526176; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; } .gate { border-left: 4px solid #df9a11; background: #fff8e8; padding: .75rem 1rem; }
+    @media (prefers-color-scheme: dark) { :root { background: #111827; color: #e5edf8; } main { background: #182235; box-shadow: none; } .card { border-color: #3a4960; } .card.winner-card, .winner { background: #163926; } th, td { border-color: #3a4960; } .gate { background: #433213; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Read-only public-directory experiment · 31 Aug 2026</p>
+    <h1>Retrieval bake-off</h1>
+    <p>Four plain retrieval approaches evaluated against 100 distinct public-directory records. The artifact contains aggregates only: no source URLs, rows, credentials, page bodies, provider calls, proxies, stealth, or CAPTCHA bypass.</p>
+    <section class="winner"><strong>Experimental winner: Scrapling <code>Fetcher</code></strong><br>Highest reach and organization-name recall at near-native median latency and no variable provider cost.</section>
+    <section class="grid" aria-label="Winner highlights">
+      <div class="card winner-card"><span>Reach rate</span><strong>97%</strong><small>97 of 100</small></div>
+      <div class="card winner-card"><span>Name matches</span><strong>42</strong><small>highest result</small></div>
+      <div class="card winner-card"><span>Median latency</span><strong>190 ms</strong><small>near native HTTP</small></div>
+      <div class="card winner-card"><span>Provider cost</span><strong>$0</strong><small>variable cost</small></div>
+    </section>
+    <h2>Results</h2>
+    <table>
+      <thead><tr><th>Runner</th><th>Reached</th><th>Name</th><th>Address</th><th>Phone</th><th>Median</th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr><td>Native HTTP</td><td>78/100</td><td>27</td><td>8</td><td>35</td><td>144 ms</td><td>$0</td></tr>
+        <tr><td>Direct Playwright</td><td>73/100</td><td>27</td><td>8</td><td>37</td><td>692 ms</td><td>$0</td></tr>
+        <tr><td>Crawlee + Playwright</td><td>87/100</td><td>41</td><td>21</td><td>35</td><td>1,197 ms</td><td>$0</td></tr>
+        <tr><td><strong>Scrapling Fetcher</strong></td><td><strong>97/100</strong></td><td><strong>42</strong></td><td>20</td><td>36</td><td><strong>190 ms</strong></td><td>$0</td></tr>
+      </tbody>
+    </table>
+    <h2>How it was judged</h2>
+    <p>Case-insensitive visible-text matching for organization name and address; phone matching ignores punctuation. Results describe this cohort on this date, not a guarantee that any live website remains correct.</p>
+    <h2>Decision and gates</h2>
+    <p>Scrapling is the best <em>experimental</em> candidate. It is not a production adoption: discovery remains disabled and scheduled work is unchanged.</p>
+    <div class="gate"><strong>Required before adoption</strong><br>Explicit source-policy approval; a policy-bound plain-Fetcher adapter; then a small human-reviewed canary through the existing evidence and review workflow.</div>
+  </main>
+</body>
+</html>

@@ -2,6 +2,9 @@
 
 ## Scope
 
+For a compact visual review, open
+[`public-retrieval-bakeoff-2026-08-31.html`](./public-retrieval-bakeoff-2026-08-31.html).
+
 This one-time experiment queried a read-only Neon account for 100 distinct public
 `community_resource_locations.hyperlink` values. It made no database writes and
 stored no source rows, URLs, credentials, or page bodies in the receipt. The
