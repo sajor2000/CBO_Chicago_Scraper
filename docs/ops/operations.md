@@ -32,3 +32,9 @@ Calibration begins only after explicit reviewer CBO-eligibility labels are avail
 ## Azure handoff gate
 
 Azure export remains disabled until the directory owner has supplied and approved the target table, primary key, optimistic version field, allowlisted column map, backup owner, and a schema-matched non-production database. The included SQL builder is not an export endpoint; enabling one requires the contract, an approved candidate-to-target mapping, test-copy rehearsal, and a downloadable artifact receipt. A generated SQL file is reviewed and applied manually by an Azure operator. Any target-version mismatch must roll back the transaction; the Vercel app has no Azure production credential.
+
+## Data-team CSV handoff
+
+An operator may download `/review/exports` after reviewer approval. It produces one complete-row CSV per current Neon relation (`community_resource_locations` or `wic_locations`) with exactly that relation's lowercase column names and order, including `geom`; the `geom` cell is blank because the review snapshot deliberately preserves source coordinates rather than a database-specific geometry value. Final response validation checks the header, quoted CSV structure, row shape, required keys, approved aliases, and blank geometry before setting the download header. Only approved fields are applied to the immutable copied row. It is a manual handoff, not an Azure import: it excludes new-resource proposals, raw evidence, and any target-table mapping. The data team must validate the file against its own contract before making any directory change.
+
+The production workflow runs `npm run verify:cbo-source-schema` with a read-only source secret before any Vercel command. The check reads schema metadata only and blocks a release on missing credentials or drift; its secret is scoped to that step and never reaches Vercel, the application, or a download.

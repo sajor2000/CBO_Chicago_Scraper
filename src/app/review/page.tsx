@@ -123,6 +123,12 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         <p>A manual, capped discovery lane searches approved Chicagoland categories, deduplicates leads, and sends only corroborated locations to human review.</p>
         <span className="availability planned">Disabled until activated</span>
       </article>
+      <article>
+        <span className="step-number">4</span>
+        <h2>Send approved changes</h2>
+        <p><a href="/review/exports">Download schema-matching CBO or WIC CSVs</a> after final human review. It never writes to Azure.</p>
+        <span className="availability active">Manual handoff only</span>
+      </article>
     </section> : null}
 
     {isOperator && (

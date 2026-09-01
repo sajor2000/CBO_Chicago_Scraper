@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 const dryRun = process.argv.includes("--dry-run");
 const releaseSteps: Array<[string, string[]]> = [
   ["npm", ["run", "check"]],
+  ["npm", ["run", "verify:cbo-source-schema"]],
   ["vercel", ["pull", "--yes", "--environment", "production"]],
   ["vercel", ["build", "--prod"]],
   ["vercel", ["deploy", "--prebuilt", "--prod", "--skip-domain", "--yes"]],
@@ -29,6 +30,7 @@ const output = (command: string, args: string[], capture = false) => {
 const status = output("git", ["status", "--porcelain"], true);
 if (status) throw new Error("Production releases require a clean worktree.");
 if (!process.env.REVIEW_DATABASE_URL) throw new Error("REVIEW_DATABASE_URL is required to migrate and verify production Neon.");
+if (!process.env.SOURCE_DATABASE_URL) throw new Error("SOURCE_DATABASE_URL is required to verify the read-only CBO source schema.");
 const branch = output("git", ["branch", "--show-current"], true);
 if (branch !== "main" && branch !== "master") throw new Error("Production releases must run from main or master.");
 output("git", ["fetch", "origin", branch]);
@@ -38,6 +40,7 @@ if (output("git", ["rev-parse", "HEAD"], true) !== output("git", ["rev-parse", `
 
 output(...releaseSteps[0]);
 output(...releaseSteps[1]);
+delete process.env.SOURCE_DATABASE_URL;
 output(...releaseSteps[2]);
 const stagedUrl = output(...releaseSteps[3], true).split(/\s+/).findLast((value) => value.startsWith("https://"));
 if (!stagedUrl) throw new Error("Vercel did not return a staged production URL.");
