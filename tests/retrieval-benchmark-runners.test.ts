@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { chromium } from "playwright";
 import { type BenchmarkManifest } from "../src/lib/retrieval/benchmark-contract.ts";
 import { crawleeBenchmarkOptions, assertCrawleeBenchmarkOptions } from "../src/lib/retrieval/benchmark-runners/crawlee-playwright.ts";
+import { runCrawleePlaywright } from "../src/lib/retrieval/benchmark-runners/crawlee-playwright.ts";
 import { runNativeHttp } from "../src/lib/retrieval/benchmark-runners/native-http.ts";
 import { runPlaywright } from "../src/lib/retrieval/benchmark-runners/playwright.ts";
 
@@ -36,11 +37,15 @@ test("native and browser runners compare the same local-only fixtures", { skip: 
     const nativeStatic = await runNativeHttp(staticTarget!, origin);
     const nativeDynamic = await runNativeHttp(dynamicTarget!, origin);
     const browserDynamic = await runPlaywright(dynamicTarget!, origin);
+    const crawleeDynamic = await runCrawleePlaywright(dynamicTarget!);
     const nativeRedirect = await runNativeHttp(redirectTarget!, origin);
     assert.equal(nativeStatic.values?.name, "Example Pantry");
     assert.equal(nativeDynamic.terminal, "no_result");
     assert.equal(browserDynamic.terminal, "success", JSON.stringify(browserDynamic));
     assert.equal(browserDynamic.values?.name, "Rendered Pantry");
+    assert.equal(crawleeDynamic.terminal, "success", JSON.stringify(crawleeDynamic));
+    assert.equal(crawleeDynamic.values?.name, "Rendered Pantry");
+    assert.equal(crawleeDynamic.requestCount, 1);
     assert.equal(nativeRedirect.terminal, "redirect_denied");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
