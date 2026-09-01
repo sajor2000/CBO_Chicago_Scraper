@@ -23,6 +23,15 @@ test("transient discovery failures wait before retrying and consume bounded call
   assert.match(worker, /consumeDiscoveryProviderCall/);
 });
 
+test("deactivation pauses queued discovery work before a further claim", () => {
+  const registry = readFileSync(new URL("../src/lib/runs/index.ts", import.meta.url), "utf8");
+  assert.match(registry, /deactivated_discovery/);
+  assert.match(registry, /run\.run_mode = 'discovery_only'/);
+  assert.match(registry, /state\.status in \('queued', 'running'\)/);
+  assert.match(registry, /where activation\.singleton and activation\.active/);
+  assert.match(registry, /not exists \(select 1 from deactivated_discovery\)/);
+});
+
 test("discovery UI remains manually activated and new resources await handoff", () => {
   const controls = readFileSync(new URL("../src/app/review/discovery-controls.tsx", import.meta.url), "utf8");
   const detail = readFileSync(new URL("../src/app/review/[candidateId]/page.tsx", import.meta.url), "utf8");

@@ -128,6 +128,9 @@ begin
   if new.active and (new.service_owner_subject is null or length(trim(new.service_owner_subject)) = 0) then
     raise exception 'Discovery activation requires service-owner approval';
   end if;
+  if new.active and new.actor_subject <> new.service_owner_subject then
+    raise exception 'Discovery activation must be recorded by the service owner';
+  end if;
   if new.active and not exists (
     select 1 from review_workspace.verification_cycles
     where id = new.accepted_cycle_id and status = 'completed'

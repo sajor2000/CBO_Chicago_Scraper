@@ -12,6 +12,7 @@ test("discovery migration is additive, review-only, and ledger-gated", () => {
   assert.match(schema, /apply_discovery_activation/i);
   assert.match(schema, /accepted_cycle_id is not null/i);
   assert.match(schema, /service_owner_subject/i);
+  assert.match(schema, /new\.actor_subject <> new\.service_owner_subject/i);
   assert.match(schema, /num_nonnulls\(resource_id, discovery_query_cell_id, discovery_lead_id\) = 1/i);
   assert.match(schema, /reserved_calls integer/i);
   assert.match(runner, /015_discovery_lane\.sql/);

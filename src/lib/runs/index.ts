@@ -561,6 +561,10 @@ export class NeonRunRegistry {
         from review_workspace.verification_runs run
         join review_workspace.run_current_state state on state.run_id = run.id
         where run.run_mode = 'discovery_only' and state.status in ('queued', 'running')
+          and exists (
+            select 1 from review_workspace.discovery_activation_current activation
+            where activation.singleton and activation.active
+          )
         order by run.started_at asc limit 1
       `);
       return discovery[0]?.id ? (await this.get(discovery[0].id)) : undefined;
@@ -747,7 +751,18 @@ export class NeonRunRegistry {
 
   async claimNext(runId: string): Promise<CheckpointClaim | undefined> {
     const rows = await this.#query<{ resource_id: string | null; resource_snapshot_id: string | null; discovery_query_cell_id: string | null; discovery_lead_id: string | null; ordinal: number; lease_token: string; attempt: number }>(`
-      with terminal_state as (
+      with deactivated_discovery as (
+        update review_workspace.run_current_state state
+        set status = 'paused', updated_at = now(), revision = revision + 1
+        from review_workspace.verification_runs run
+        where state.run_id = run.id and state.run_id = $1::uuid
+          and run.run_mode = 'discovery_only' and state.status in ('queued', 'running')
+          and not exists (
+            select 1 from review_workspace.discovery_activation_current activation
+            where activation.singleton and activation.active
+          )
+        returning state.run_id
+      ), terminal_state as (
         update review_workspace.run_current_state state
         set status = case
               when state.next_checkpoint_ordinal >= (select count(*) from review_workspace.run_checkpoints where run_id = state.run_id) then 'completed'
@@ -770,6 +785,7 @@ export class NeonRunRegistry {
           and state.status in ('queued', 'running')
           and checkpoint.ordinal = state.next_checkpoint_ordinal
           and (checkpoint.state = 'pending' or (checkpoint.state = 'retry_wait' and checkpoint.next_attempt_at <= now()) or (checkpoint.state = 'leased' and checkpoint.lease_expires_at <= now()))
+          and not exists (select 1 from deactivated_discovery)
           and not exists (select 1 from terminal_state)
         returning checkpoint.resource_id, checkpoint.cycle_membership_id, checkpoint.discovery_query_cell_id, checkpoint.discovery_lead_id, checkpoint.ordinal, checkpoint.lease_token, checkpoint.attempt
       ), started as (
@@ -788,7 +804,7 @@ export class NeonRunRegistry {
     `, [runId]);
     if (!rows[0]) {
       const run = await this.get(runId);
-      if (!run || run.status === "cancelled" || run.status === "completed") return undefined;
+      if (!run || run.status === "cancelled" || run.status === "completed" || run.status === "paused") return undefined;
       throw new RunLockError();
     }
     return {

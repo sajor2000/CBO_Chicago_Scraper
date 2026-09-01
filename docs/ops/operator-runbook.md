@@ -2,7 +2,7 @@
 
 ## Discovery lane (manual only)
 
-Activate discovery only after an accepted completed directory cycle and service-owner approval of the checked-in query policy. Discovery is a manual canary lane: the weekly dispatcher can resume an already-authorized run only after it finds no claimable known-directory work; it never creates discovery work. Deactivate by appending an inactive activation event. Do not schedule discovery, write source tables, or export approved discoveries to Azure.
+Activate discovery only after an accepted completed directory cycle and service-owner approval of the checked-in query policy. Configure the service owner's Clerk subject in server-only `DISCOVERY_SERVICE_OWNER_SUBJECT`; only that signed-in operator can activate discovery, and it is recorded from the server rather than submitted by the browser. Discovery is a manual canary lane: the weekly dispatcher can resume an already-authorized run only after it finds no claimable known-directory work; it never creates discovery work. Deactivate by appending an inactive activation event; it pauses queued discovery claims. Do not schedule discovery, write source tables, or export approved discoveries to Azure.
 
 Clerk controls access through a signed-in account whose subject has an active `operator` grant in the review workspace. Start a dry run through `POST /api/runs` with a unique idempotency key, bounded source selection, and budget. Repeating the same key returns the same run. Use `PATCH /api/runs` to cancel or resume; completion advances one durable checkpoint at a time. Cancelling releases an unfinished lease; a stale worker cannot complete it.
 

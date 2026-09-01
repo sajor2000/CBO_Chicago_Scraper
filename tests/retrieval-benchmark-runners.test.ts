@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
+import { chromium } from "playwright";
 import { type BenchmarkManifest } from "../src/lib/retrieval/benchmark-contract.ts";
 import { crawleeBenchmarkOptions, assertCrawleeBenchmarkOptions } from "../src/lib/retrieval/benchmark-runners/crawlee-playwright.ts";
 import { runNativeHttp } from "../src/lib/retrieval/benchmark-runners/native-http.ts";
@@ -21,7 +23,7 @@ async function fixtureServer() {
   return server;
 }
 
-test("native and browser runners compare the same local-only fixtures", async () => {
+test("native and browser runners compare the same local-only fixtures", { skip: !existsSync(chromium.executablePath()) }, async () => {
   const server = await fixtureServer();
   try {
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

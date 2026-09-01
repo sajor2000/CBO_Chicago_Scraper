@@ -12,7 +12,6 @@ export function DiscoveryControls({ active, dailyProviderCallCeiling, acceptedCy
   const [leadCap, setLeadCap] = useState(10);
   const [callBudget, setCallBudget] = useState(20);
   const [rationale, setRationale] = useState("");
-  const [owner, setOwner] = useState("");
   const [message, setMessage] = useState<string>();
   const [busy, setBusy] = useState(false);
   const cells = categories.length * counties.length * 2;
@@ -28,7 +27,7 @@ export function DiscoveryControls({ active, dailyProviderCallCeiling, acceptedCy
   };
   const activate = async (nextActive: boolean) => {
     const result = await request("/api/discovery/activation", {
-      active: nextActive, acceptedCycleId: acceptedCycles[0]?.id, dailyProviderCallCeiling: Math.min(DISCOVERY_MAX_PROVIDER_CALLS, Math.max(1, callBudget)), serviceOwnerSubject: owner, rationale
+      active: nextActive, acceptedCycleId: acceptedCycles[0]?.id, dailyProviderCallCeiling: Math.min(DISCOVERY_MAX_PROVIDER_CALLS, Math.max(1, callBudget)), rationale
     }, "Could not update discovery activation.");
     if (result) window.location.reload();
   };
@@ -41,9 +40,8 @@ export function DiscoveryControls({ active, dailyProviderCallCeiling, acceptedCy
     <div><p className="eyebrow">Manual canary lane</p><h2 id="discovery-title">Find new resources</h2><p>Discovery is disabled by default. It stages evidence for human review and never writes the source directory.</p></div>
     {!active ? <>
       <p>{acceptedCycles.length ? "Activate only after confirming the completed directory cycle and service-owner approval." : "A completed known-directory cycle is required before discovery can be activated."}</p>
-      <label className="resource-search">Service-owner approval subject<input value={owner} onChange={(event) => setOwner(event.target.value)} disabled={busy || !acceptedCycles.length} /></label>
       <label className="resource-search">Activation rationale<textarea value={rationale} onChange={(event) => setRationale(event.target.value)} maxLength={1000} disabled={busy || !acceptedCycles.length} /></label>
-      <button type="button" className="primary-button" onClick={() => void activate(true)} disabled={busy || !acceptedCycles.length || !owner.trim() || !rationale.trim()}>Activate manual discovery</button>
+      <button type="button" className="primary-button" onClick={() => void activate(true)} disabled={busy || !acceptedCycles.length || !rationale.trim()}>Activate manual discovery</button>
     </> : <>
       <p className="availability active">Active · daily call ceiling {dailyProviderCallCeiling}</p>
       <label className="resource-search">Deactivation rationale<input value={rationale} onChange={(event) => setRationale(event.target.value)} maxLength={1000} disabled={busy} /></label>
