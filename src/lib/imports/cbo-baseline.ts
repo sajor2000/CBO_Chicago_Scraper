@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import { assertReviewWorkspace, reviewWorkspaceDb } from "../db.ts";
 import { approvedCboSourceProfile, isPostgresIdentifier, quotePostgresIdentifier } from "./cbo-source-profile.ts";
+import { directSourceColumns, sourceRelations, type SourceRelation } from "./cbo-source-schema.ts";
+
+export { directSourceColumns, sourceRelations, type SourceRelation } from "./cbo-source-schema.ts";
 
 export type CboSourceConfig = {
   databaseUrl: string;
@@ -15,12 +18,6 @@ export type CboSourceConfig = {
 };
 
 export type SourceRow = { sourceId: string; payload: Record<string, unknown> };
-export const sourceRelations = ["community_resource_locations", "wic_locations"] as const;
-export type SourceRelation = typeof sourceRelations[number];
-export const directSourceColumns: Record<SourceRelation, readonly string[]> = {
-  community_resource_locations: ["id", "organization_name", "location_type", "full_address", "hyperlink", "latitude", "longitude", "categories", "status", "capacity", "phone", "email", "hours", "languages", "description", "confidence", "sources", "last_verified", "last_enriched", "geom", "created_at", "updated_at"],
-  wic_locations: ["wic_id", "location_name", "location_type", "full_address", "city", "state", "zip_code", "county", "fips_state", "fips_county", "phone", "website", "longitude", "latitude", "geom", "source_date", "created_at", "updated_at"]
-};
 
 export type BaselineImportReport = {
   sourceRows: number;

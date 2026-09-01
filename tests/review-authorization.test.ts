@@ -19,8 +19,11 @@ test("only an operator can download the manual data-team CSV handoff", () => {
   const page = readFileSync(new URL("../src/app/review/exports/page.tsx", import.meta.url), "utf8");
   assert.match(route, /requireWorkspaceRole\(userId, "operator"\)/);
   assert.match(route, /Content-Disposition/);
+  assert.match(route, /createDataTeamCsv/);
   assert.match(route, /Cache-Control.*no-store/);
   assert.match(route, /isDataTeamRelation/);
+  assert.ok(route.indexOf("createDataTeamCsv") < route.indexOf("Content-Disposition"));
+  assert.match(route, /Data-team handoff failed/);
   assert.doesNotMatch(route, /AZURE_EXPORT_MAPPING_JSON/);
   assert.match(page, /requireWorkspaceRole\(userId, "operator"\)/);
   assert.match(page, /new-resource proposals remain out of the files/);

@@ -14,6 +14,7 @@
     "apply:reviewer-cbo-eligibility-migration": "psql \"$REVIEW_DATABASE_URL\" -v ON_ERROR_STOP=1 -f migrations/008_reviewer_cbo_eligibility.sql",
     "apply:recurring-verification-migration": "node scripts/apply-review-migrations.ts",
     "verify:review-schema": "node scripts/verify-review-schema.ts",
+    "verify:cbo-source-schema": "node scripts/verify-cbo-source-schema.ts",
     "release:production": "node scripts/release-production.ts",
     "apply:baseline-import-migration": "psql \"$REVIEW_DATABASE_URL\" -v ON_ERROR_STOP=1 -f migrations/004_baseline_imports.sql",
     "profile:cbo-source": "node scripts/profile-cbo-source.ts",
