@@ -12,6 +12,7 @@ The current operational contract is the review-first workflow documented in `ops
 ## Quick links
 
 - [Operator runbook](ops/operator-runbook.md)
+- [Railway manual dispatcher](ops/railway-manual-dispatch.md)
 - [Operations](ops/operations.md)
 - [Security and secrets](ops/security-and-secrets.md)
 - [Source policy](policy/source-policy.md)

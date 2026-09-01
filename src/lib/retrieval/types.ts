@@ -1,4 +1,4 @@
-export type Provider = "firecrawl" | "google_places" | "local_directory" | "irs" | "search_fallback" | "tavily" | "trusted_directory";
+export type Provider = "exa" | "firecrawl" | "google_places" | "local_directory" | "irs" | "search_fallback" | "tavily" | "trusted_directory";
 export type RetrievalState = "success" | "no_result" | "blocked" | "timeout" | "rate_limited" | "malformed";
 
 export interface EvidenceValues {
@@ -7,6 +7,8 @@ export interface EvidenceValues {
   phone?: string;
   url?: string;
   businessStatus?: "open" | "closed" | "unknown";
+  placeId?: string;
+  county?: string;
 }
 
 export interface CapturedObservation {

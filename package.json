@@ -9,6 +9,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "check": "npm run typecheck && npm test",
     "build": "next build",
+    "benchmark:retrieval": "node --experimental-strip-types scripts/run-retrieval-benchmark.ts",
     "apply:review-migrations": "psql \"$REVIEW_DATABASE_URL\" -v ON_ERROR_STOP=1 -f migrations/001_review_workspace.sql -f migrations/002_categories.sql -f migrations/003_neon_review_persistence.sql -f migrations/004_baseline_imports.sql -f migrations/005_azure_exports.sql -f migrations/006_expanded_categories.sql",
     "apply:reviewer-cbo-eligibility-migration": "psql \"$REVIEW_DATABASE_URL\" -v ON_ERROR_STOP=1 -f migrations/008_reviewer_cbo_eligibility.sql",
     "apply:recurring-verification-migration": "node scripts/apply-review-migrations.ts",
@@ -30,6 +31,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "playwright": "^1.62.1",
     "typescript": "^5.8.3"
   }
 }

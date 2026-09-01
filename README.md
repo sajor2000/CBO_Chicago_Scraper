@@ -31,14 +31,15 @@ The default service-location boundary is the seven-county Chicagoland/CMAP regio
 
 The app needs a polished, simple interface for a small ChicagoHealthMap team—not an engineering console. It must let an operator manually start a bounded agentic crawling run, follow its progress and failure states, and hand reviewers a clear queue of evidence-backed field diffs. Reviewers should be able to understand the resource, sources, confidence, and proposed change on one screen before approving, rejecting, or deferring individual fields.
 
-The checked-in five-minute Vercel Cron schedule invokes one checkpoint for the monthly cohort; it prevents overlapping work, obeys provider budgets, and never bypasses human review. Canary acceptance is an operational prerequisite for configuring production provider credentials and relying on that schedule, not an application-enforced Cron switch.
+The checked-in weekly Vercel Cron schedule (Sunday 00:00 UTC) invokes one checkpoint for the monthly cohort; it prevents overlapping work, obeys provider budgets, and never bypasses human review. Canary acceptance is an operational prerequisite for configuring production provider credentials and relying on that schedule, not an application-enforced Cron switch.
 
 ## Tech stack
 
 | Layer | Choice | Responsibility |
 | --- | --- | --- |
 | Web app | Next.js 16 + React 19 + TypeScript | Reviewer queue, operator controls, server routes |
-| Hosting | Vercel | Preview/production deployment, manual trigger, and guarded five-minute Cron entry point |
+| Hosting | Vercel | Preview/production deployment, manual trigger, and guarded weekly Cron entry point |
+| Optional dispatcher | Railway | Manual-only authenticated invocation of the existing guarded Cron entry point |
 | Authentication | Clerk | Small-team sign-in; server-side reviewer/operator authorization |
 | Review database | Neon PostgreSQL + PostGIS | CBO/WIC copies and the `review_workspace` audit workflow |
 | Evidence storage | Vercel Blob | Private raw evidence artifacts when configured |
@@ -58,6 +59,7 @@ The checked-in five-minute Vercel Cron schedule invokes one checkpoint for the m
 - Calibration compares GPT CBO eligibility only with an optional, explicit reviewer eligibility label on a terminal decision; field approval/rejection alone is never treated as that label.
 - Blocked, rate-limited, timed-out, absent, or contradictory sources are `unable_to_verify`/conflict outcomes.
 - Cron is production-only and secured by `CRON_SECRET`; previews do not run it. Start relying on it only after the documented manual canary passes.
+- Railway, when used, is only a manual dispatcher to that same Cron endpoint; it has no database, source, provider, or Azure credentials and no configured schedule.
 
 ## Repository map
 
@@ -125,6 +127,7 @@ Before changing behavior, run `npm run check`. Preserve the review-first boundar
 Index: [docs/README.md](docs/README.md)
 
 - [Operator runbook](docs/ops/operator-runbook.md)
+- [Railway manual dispatcher](docs/ops/railway-manual-dispatch.md)
 - [Operations](docs/ops/operations.md)
 - [Security and secrets](docs/ops/security-and-secrets.md)
 - [Data dictionary](docs/data/data-dictionary.md)

@@ -1,0 +1,7 @@
+FROM node:24-alpine
+
+WORKDIR /app
+COPY scripts/railway-dispatch.mjs ./railway-dispatch.mjs
+USER node
+
+CMD ["node", "railway-dispatch.mjs"]

@@ -8,7 +8,14 @@ const outcomeCopy: Record<CheckpointOutcome, { label: string; note: string; tone
   unable_to_verify: { label: "Verification incomplete", note: "Required evidence was unavailable, so this listing remains due for review.", tone: "incomplete" },
   provider_failure: { label: "Provider failed", note: "A provider failed before the audit could finish. No listing change was proposed.", tone: "incomplete" },
   cancelled: { label: "Cancelled", note: "The audit stopped before a decision was produced.", tone: "neutral" },
-  budget_exhausted: { label: "Paused — budget reached", note: "The audit needs more approved budget before it can continue.", tone: "neutral" }
+  budget_exhausted: { label: "Paused — budget reached", note: "The audit needs more approved budget before it can continue.", tone: "neutral" },
+  query_completed: { label: "Query cell completed", note: "Discovery results were recorded and eligible leads were queued for review.", tone: "keep" },
+  duplicate: { label: "Duplicate location", note: "The lead matched an existing service location.", tone: "keep" },
+  possible_duplicate: { label: "Possible duplicate", note: "The lead needs human identity review before it can be treated as new.", tone: "review" },
+  out_of_scope: { label: "Out of scope", note: "The lead does not meet the approved service-location scope.", tone: "neutral" },
+  not_a_cbo: { label: "Not a CBO", note: "The evidence does not show an eligible community-based organization.", tone: "neutral" },
+  insufficient_evidence: { label: "Evidence incomplete", note: "The lead lacks the required corroborating evidence.", tone: "incomplete" },
+  not_processed_budget: { label: "Not processed — budget cap", note: "The lead was retained but not processed within the approved campaign cap.", tone: "neutral" }
 };
 
 const label = (value: string) => value.replace(/_/g, " ");

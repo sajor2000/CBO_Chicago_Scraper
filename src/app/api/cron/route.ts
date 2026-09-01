@@ -10,7 +10,7 @@ export const maxDuration = 60;
 type CronDependencies = {
   authorize: (token: string | null) => void;
   assertBaselineReady: () => Promise<void>;
-  launchScheduled: () => Promise<{ id: string }>;
+  launchScheduled: () => Promise<{ id: string } | undefined>;
   executeCheckpoint: (runId: string) => Promise<CheckpointResult>;
 };
 
@@ -30,6 +30,7 @@ export async function executeScheduledCron(request: Request, dependencies: CronD
     dependencies.authorize(request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null);
     await dependencies.assertBaselineReady();
     const run = await dependencies.launchScheduled();
+    if (!run) return Response.json({ scheduled: true, skipped: true, message: "No known-resource or authorized discovery checkpoint is due." });
     return Response.json({ scheduled: true, runId: run.id, ...(await dependencies.executeCheckpoint(run.id)) });
   } catch (error) {
     if (error instanceof RunLockError) return Response.json({ scheduled: true, skipped: true, message: "A checkpoint is already leased." }, { status: 202 });

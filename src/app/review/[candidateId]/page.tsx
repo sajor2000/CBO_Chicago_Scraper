@@ -62,6 +62,7 @@ export default async function CandidateReviewPage({ params }: { params: Promise<
     <section className="page-intro">
       <h1>{candidate.resourceName ?? `Candidate ${candidate.id.slice(0, 8)}`}</h1>
       <p>Status: {statusLabel(candidate.status)} · revision {candidate.revision}{candidate.kind ? ` · ${statusLabel(candidate.kind)}` : ""}</p>
+      {candidate.kind === "new_resource" && candidate.status === "approved" ? <p className="availability planned">Awaiting map handoff</p> : null}
     </section>
 
     <section className="detail-panel" aria-labelledby="fields-title">

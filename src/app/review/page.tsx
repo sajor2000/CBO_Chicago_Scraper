@@ -8,6 +8,7 @@ import { RunControls } from "./run-controls.tsx";
 import { RunStatus } from "./run-status.tsx";
 import { CalibrationSummary } from "./calibration-summary.tsx";
 import { SiteReports } from "./site-reports.tsx";
+import { DiscoveryControls } from "./discovery-controls.tsx";
 
 const fieldLabel = (field: string) => field.replace(/_/g, " ");
 const statusLabel = (status: string) => status.replace(/_/g, " ");
@@ -69,8 +70,12 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   let calibration: Awaited<ReturnType<typeof reviewRepository.calibrationSummary>> = [];
   let dueCount = 0;
   let readiness: Awaited<ReturnType<typeof verificationReadiness>> | undefined;
+  let discoveryActivation: Awaited<ReturnType<typeof reviewRepository.discoveryActivation>> | undefined;
   if (isOperator) {
     readiness = await verificationReadiness();
+    if (readiness.checks.filter((check) => check.name !== "configuration").every((check) => check.ready)) {
+      discoveryActivation = await reviewRepository.discoveryActivation();
+    }
     if (readiness.ready) {
       const [loadedResources, loadedRuns, loadedReports, loadedCalibration, preview] = await Promise.all([
         reviewRepository.listSeededResources(100),
@@ -115,8 +120,8 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
       <article>
         <span className="step-number">3</span>
         <h2>Find new resources</h2>
-        <p>A separate discovery run will search approved Chicagoland categories, deduplicate leads, and send credible new resources to human review.</p>
-        <span className="availability planned">Backend lane next</span>
+        <p>A manual, capped discovery lane searches approved Chicagoland categories, deduplicates leads, and sends only corroborated locations to human review.</p>
+        <span className="availability planned">Disabled until activated</span>
       </article>
     </section> : null}
 
@@ -129,6 +134,8 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         </section>
         : <RunControls resources={resources} dueCount={dueCount} />
     )}
+
+    {isOperator && discoveryActivation ? <DiscoveryControls {...discoveryActivation} /> : null}
 
     {isOperator && <SiteReports reports={siteReports} />}
     {isOperator && <RunStatus runs={runs} />}

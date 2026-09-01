@@ -81,17 +81,28 @@ test("Google Places and Tavily return bounded, advisory observations", async () 
   assert.equal(search.sourceUrl, "https://example.org");
 });
 
-test("Exa uses the configured discovery fallback without authorizing scrape targets", async () => {
+test("Exa returns bounded direct-provider observations without authorizing scrape targets", async () => {
   let request: Request | undefined;
   const exa = new ExaClient({ apiKey: "secret", fetch: async (url, init) => {
     request = new Request(url, init);
     return Response.json({ results: [{ title: "Example Pantry", url: "https://example.org", highlights: ["Food assistance in Chicago"] }] });
   } });
   const result = await exa.search("Example Pantry Chicago", { maxResults: 99 });
-  assert.equal(result.provider, "search_fallback");
+  assert.equal(result.provider, "exa");
   assert.equal(result.excerpt, "Food assistance in Chicago");
   assert.equal(request?.headers.get("x-api-key"), "secret");
   assert.deepEqual(await request?.json(), { query: "Example Pantry Chicago", type: "fast", numResults: 5, moderation: true, contents: { highlights: true } });
+});
+
+test("discovery methods preserve bounded provider result arrays", async () => {
+  const google = new GooglePlacesClient({ apiKey: "secret", fetch: async () => Response.json({ places: [
+    { id: "place-a", displayName: { text: "A" }, formattedAddress: "1 Main", addressComponents: [{ longText: "Cook County", types: ["administrative_area_level_2"] }] },
+    { id: "place-b", displayName: { text: "B" }, formattedAddress: "2 Main" }
+  ] }) });
+  const results = await google.discovery("pantry Cook", 2);
+  assert.deepEqual(results.map((result) => result.values?.placeId), ["place-a", "place-b"]);
+  assert.equal(results[0]?.values?.county, "Cook");
+  await assert.rejects(google.discovery("pantry", 6));
 });
 
 test("GPT audit input retains bounded structured provider evidence", () => {

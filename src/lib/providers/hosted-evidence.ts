@@ -2,6 +2,8 @@ import { azureOpenAiScorerFromEnv, CBO_AUDIT_PROMPT_VERSION } from "../ai/azure-
 import type { CapturedObservation } from "../retrieval/types.ts";
 import { matchesIdentity, type ReferenceResource } from "../verification/index.ts";
 import { ExaClient, FirecrawlClient, GooglePlacesClient, IrsClient, TavilyClient, TrustedDirectoryClient } from "./index.ts";
+import { safeOutboundUrl } from "../security/outbound-url.ts";
+import type { DiscoveryLead } from "../discovery/index.ts";
 
 const bounded = (value: string | undefined, maximum: number) => value?.slice(0, maximum);
 
@@ -46,6 +48,49 @@ export async function collectHostedEvidence(input: {
     provider: "firecrawl" as const, state: "no_result" as const, observedAt: new Date().toISOString()
   };
   return [firecrawl, google, search, ...(irs ? [irs] : []), ...(directory ? [directory] : [])];
+}
+
+/** Discovery never follows a search URL: only an identity-provided official URL can reach Firecrawl. */
+export async function collectDiscoveryEvidence(input: {
+  lead: DiscoveryLead;
+  firecrawl: Pick<FirecrawlClient, "scrape">;
+  google: Pick<GooglePlacesClient, "search">;
+  exa: Pick<ExaClient, "search">;
+  irs?: Pick<IrsClient, "search">;
+  directory?: Pick<TrustedDirectoryClient, "search">;
+  validateOfficialUrl?: (value: string) => Promise<unknown>;
+}): Promise<CapturedObservation[]> {
+  const query = [input.lead.name, input.lead.address].filter(Boolean).join(", ");
+  const [google, exa, irs, directory] = await Promise.all([
+    input.google.search(query), input.exa.search(query, { maxResults: 3 }), input.irs?.search(query), input.directory?.search(query)
+  ]);
+  let official: CapturedObservation = { provider: "firecrawl", state: "no_result", observedAt: new Date().toISOString() };
+  if (input.lead.url) {
+    try {
+      await (input.validateOfficialUrl ?? safeOutboundUrl)(input.lead.url);
+      official = await input.firecrawl.scrape(input.lead.url, { allowInteract: false });
+    } catch {
+      official = { provider: "firecrawl", state: "blocked", observedAt: new Date().toISOString(), sourceUrl: input.lead.url };
+    }
+  }
+  return [official, google, exa, ...(irs ? [irs] : []), ...(directory ? [directory] : [])];
+}
+
+export function discoveryEvidenceFromEnv() {
+  const firecrawlKey = process.env.FIRECRAWL_API_KEY;
+  const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+  const exaKey = process.env.EXA_API_KEY;
+  if (!firecrawlKey || !googleKey || !exaKey) throw new Error("Firecrawl, Google Places, and Exa must be configured before discovery can execute.");
+  return {
+    collect: (lead: DiscoveryLead) => collectDiscoveryEvidence({
+      lead,
+      firecrawl: new FirecrawlClient({ apiKey: firecrawlKey }),
+      google: new GooglePlacesClient({ apiKey: googleKey }),
+      exa: new ExaClient({ apiKey: exaKey }),
+      irs: process.env.IRS_SEARCH_ENDPOINT ? new IrsClient({ endpoint: process.env.IRS_SEARCH_ENDPOINT }) : undefined,
+      directory: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT ? new TrustedDirectoryClient({ endpoint: process.env.TRUSTED_DIRECTORY_SEARCH_ENDPOINT }) : undefined
+    })
+  };
 }
 
 export function hostedEvidenceFromEnv() {

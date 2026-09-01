@@ -18,7 +18,14 @@ export type CheckpointOutcome =
   | "unable_to_verify"
   | "provider_failure"
   | "cancelled"
-  | "budget_exhausted";
+  | "budget_exhausted"
+  | "query_completed"
+  | "duplicate"
+  | "possible_duplicate"
+  | "out_of_scope"
+  | "not_a_cbo"
+  | "insufficient_evidence"
+  | "not_processed_budget";
 
 export interface FrozenCycleMembership {
   resourceId: string;

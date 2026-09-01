@@ -14,12 +14,13 @@ const pauseLeasePath = new URL("../migrations/011_pause_preserves_checkpoint_lea
 const eligibilityReviewPath = new URL("../migrations/012_cbo_eligibility_review.sql", import.meta.url);
 const eligibilityDecisionPath = new URL("../migrations/013_eligibility_decision_state.sql", import.meta.url);
 const migrationLedgerGrantPath = new URL("../migrations/014_migration_ledger_runtime_access.sql", import.meta.url);
+const discoveryPath = new URL("../migrations/015_discovery_lane.sql", import.meta.url);
 const checksum = (path: URL) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
 const sql = neon(databaseUrl);
 const ledger = await sql.query(
   `select version, count(*)::integer as count, min(checksum) as checksum
-   from review_workspace.schema_migrations where version in (4, 9, 10, 11, 12, 13, 14) group by version`
+  from review_workspace.schema_migrations where version in (4, 9, 10, 11, 12, 13, 14, 15) group by version`
 ) as Array<{ version: number; count: number; checksum: string }>;
 const recorded = (version: number) => ledger.find((entry) => Number(entry.version) === version);
 const baselineLedger = recorded(4);
@@ -29,6 +30,7 @@ const pauseLeaseLedger = recorded(11);
 const eligibilityReviewLedger = recorded(12);
 const eligibilityDecisionLedger = recorded(13);
 const migrationLedgerGrantLedger = recorded(14);
+const discoveryLedger = recorded(15);
 
 // Preflight only: a historical 004 collision must be resolved explicitly, never rewritten here.
 if (Number(baselineLedger?.count ?? 0) > 1 || (baselineLedger?.checksum && baselineLedger.checksum !== checksum(baselinePath))) {
@@ -52,11 +54,14 @@ if (Number(eligibilityDecisionLedger?.count ?? 0) > 1 || (eligibilityDecisionLed
 if (Number(migrationLedgerGrantLedger?.count ?? 0) > 1 || (migrationLedgerGrantLedger?.checksum && migrationLedgerGrantLedger.checksum !== checksum(migrationLedgerGrantPath))) {
   throw new Error("Migration preflight blocked: version 14 checksum drift.");
 }
-if (migrationLedgerGrantLedger) process.exit(0);
+if (Number(discoveryLedger?.count ?? 0) > 1 || (discoveryLedger?.checksum && discoveryLedger.checksum !== checksum(discoveryPath))) {
+  throw new Error("Migration preflight blocked: version 15 checksum drift.");
+}
+if (discoveryLedger) process.exit(0);
 
-const migrations = eligibilityDecisionLedger ? [migrationLedgerGrantPath] : eligibilityReviewLedger ? [eligibilityDecisionPath, migrationLedgerGrantPath] : pauseLeaseLedger ? [eligibilityReviewPath, eligibilityDecisionPath, migrationLedgerGrantPath] : mirrorCopyLedger ? [pauseLeasePath, eligibilityReviewPath, eligibilityDecisionPath, migrationLedgerGrantPath] : recurringLedger ? [mirrorCopyPath, pauseLeasePath, eligibilityReviewPath, eligibilityDecisionPath, migrationLedgerGrantPath] : [recurringPath, mirrorCopyPath, pauseLeasePath, eligibilityReviewPath, eligibilityDecisionPath, migrationLedgerGrantPath];
+const migrations = migrationLedgerGrantLedger ? [discoveryPath] : eligibilityDecisionLedger ? [migrationLedgerGrantPath, discoveryPath] : eligibilityReviewLedger ? [eligibilityDecisionPath, migrationLedgerGrantPath, discoveryPath] : pauseLeaseLedger ? [eligibilityReviewPath, eligibilityDecisionPath, migrationLedgerGrantPath, discoveryPath] : mirrorCopyLedger ? [pauseLeasePath, eligibilityReviewPath, eligibilityDecisionPath, migrationLedgerGrantPath, discoveryPath] : recurringLedger ? [mirrorCopyPath, pauseLeasePath, eligibilityReviewPath, eligibilityDecisionPath, migrationLedgerGrantPath, discoveryPath] : [recurringPath, mirrorCopyPath, pauseLeasePath, eligibilityReviewPath, eligibilityDecisionPath, migrationLedgerGrantPath, discoveryPath];
 const ledgerValues = migrations.map((path) => {
-  const version = path === recurringPath ? 9 : path === mirrorCopyPath ? 10 : path === pauseLeasePath ? 11 : path === eligibilityReviewPath ? 12 : path === eligibilityDecisionPath ? 13 : 14;
+  const version = path === recurringPath ? 9 : path === mirrorCopyPath ? 10 : path === pauseLeasePath ? 11 : path === eligibilityReviewPath ? 12 : path === eligibilityDecisionPath ? 13 : path === migrationLedgerGrantPath ? 14 : 15;
   return `(${version}, '${checksum(path)}')`;
 });
 const result = spawnSync("psql", [
