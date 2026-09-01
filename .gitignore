@@ -8,5 +8,6 @@ coverage/
 dist/
 .next/
 *.tsbuildinfo
+__pycache__/
 /.clerk/
 storage/
