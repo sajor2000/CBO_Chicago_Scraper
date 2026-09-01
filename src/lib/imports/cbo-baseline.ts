@@ -15,6 +15,12 @@ export type CboSourceConfig = {
 };
 
 export type SourceRow = { sourceId: string; payload: Record<string, unknown> };
+export const sourceRelations = ["community_resource_locations", "wic_locations"] as const;
+export type SourceRelation = typeof sourceRelations[number];
+export const directSourceColumns: Record<SourceRelation, readonly string[]> = {
+  community_resource_locations: ["id", "organization_name", "location_type", "full_address", "hyperlink", "latitude", "longitude", "categories", "status", "capacity", "phone", "email", "hours", "languages", "description", "confidence", "sources", "last_verified", "last_enriched", "geom", "created_at", "updated_at"],
+  wic_locations: ["wic_id", "location_name", "location_type", "full_address", "city", "state", "zip_code", "county", "fips_state", "fips_county", "phone", "website", "longitude", "latitude", "geom", "source_date", "created_at", "updated_at"]
+};
 
 export type BaselineImportReport = {
   sourceRows: number;
@@ -154,16 +160,12 @@ async function readDirectSourceRows(config: CboSourceConfig, query: NeonQueryFun
     throw new CboBaselineImportError("Configured CBO source tables are unavailable.");
   }
 
-  const requiredColumns = {
-    community_resource_locations: ["id", "organization_name", "location_type", "full_address", "hyperlink", "latitude", "longitude", "categories", "status", "capacity", "phone", "email", "hours", "languages", "description", "confidence", "sources", "last_verified", "last_enriched", "created_at", "updated_at"],
-    wic_locations: ["wic_id", "location_name", "location_type", "full_address", "city", "state", "zip_code", "county", "fips_state", "fips_county", "phone", "website", "longitude", "latitude", "source_date", "created_at", "updated_at"]
-  } as const;
   const columns = await query.query(
     `select table_name, column_name from information_schema.columns
      where table_schema = 'public' and table_name = any($1::text[])`,
     [expected]
-  ) as Array<{ table_name: keyof typeof requiredColumns; column_name: string }>;
-  for (const [table, required] of Object.entries(requiredColumns)) {
+  ) as Array<{ table_name: SourceRelation; column_name: string }>;
+  for (const [table, required] of Object.entries(directSourceColumns)) {
     const available = new Set(columns.filter((column) => column.table_name === table).map((column) => column.column_name));
     if (!required.every((column) => available.has(column))) throw new CboBaselineImportError("Configured CBO source columns are unavailable.");
   }
@@ -207,8 +209,6 @@ async function readDirectSourceRows(config: CboSourceConfig, query: NeonQueryFun
 }
 
 type DestinationQuery = ReturnType<typeof reviewWorkspaceDb>;
-const sourceRelations = ["community_resource_locations", "wic_locations"] as const;
-type SourceRelation = typeof sourceRelations[number];
 
 function sourceRelation(row: SourceRow): SourceRelation {
   const relation = row.payload.source_relation;

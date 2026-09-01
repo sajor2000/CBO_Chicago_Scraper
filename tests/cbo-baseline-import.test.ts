@@ -113,8 +113,8 @@ test("source projection uses literal allowlisted JSON keys and maps source rows"
 test("direct profile reads only both approved base tables and preserves public source records", async () => {
   const queries: string[] = [];
   const required = {
-    community_resource_locations: ["id", "organization_name", "location_type", "full_address", "hyperlink", "latitude", "longitude", "categories", "status", "capacity", "phone", "email", "hours", "languages", "description", "confidence", "sources", "last_verified", "last_enriched", "created_at", "updated_at"],
-    wic_locations: ["wic_id", "location_name", "location_type", "full_address", "city", "state", "zip_code", "county", "fips_state", "fips_county", "phone", "website", "longitude", "latitude", "source_date", "created_at", "updated_at"]
+    community_resource_locations: ["id", "organization_name", "location_type", "full_address", "hyperlink", "latitude", "longitude", "categories", "status", "capacity", "phone", "email", "hours", "languages", "description", "confidence", "sources", "last_verified", "last_enriched", "geom", "created_at", "updated_at"],
+    wic_locations: ["wic_id", "location_name", "location_type", "full_address", "city", "state", "zip_code", "county", "fips_state", "fips_county", "phone", "website", "longitude", "latitude", "geom", "source_date", "created_at", "updated_at"]
   };
   const query = {
     query: async (sql: string) => {

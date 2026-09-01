@@ -38,6 +38,10 @@ export interface ReviewCandidate {
 
 export type SeededResourceSummary = { id: string; name: string };
 export type ReviewQueueFilters = { limit?: number; status?: CandidateStatus; kind?: NonNullable<ReviewCandidate["kind"]>; evidenceQuality?: NonNullable<ReviewProvenance["advisory"]>["evidenceQuality"] };
+export type DataTeamHandoffRow = {
+  sourceRecord: Record<string, unknown>;
+  approvedValues: FieldValues;
+};
 
 export interface ReviewDecisionRecord {
   revision: number;
@@ -328,6 +332,28 @@ export class NeonReviewRepository {
     params.push(Math.max(1, Math.min(filters.limit ?? 50, 100)));
     const rows = await this.#query<CandidateRow>(`${candidateSelect}${where.length ? ` where ${where.join(" and ")}` : ""} order by case state.status when 'staged' then 0 when 'deferred' then 1 else 2 end, case revision.kind when 'closure_review' then 0 else 1 end, state.updated_at desc limit $${params.length}`, params);
     return rows.map(fromRow);
+  }
+
+  /** Current approved updates projected from their immutable source snapshot. */
+  async dataTeamHandoff(sourceRelation: "community_resource_locations" | "wic_locations"): Promise<DataTeamHandoffRow[]> {
+    const rows = await this.#query<{
+      source_record: unknown; proposed_values: FieldValues; approved_field_paths: string[];
+    }>(`
+      select snapshot.source_payload->'source_record' as source_record,
+        revision.proposed_values, state.approved_field_paths
+      from review_workspace.candidate_current_state state
+      join review_workspace.candidate_revisions revision on revision.id = state.candidate_revision_id
+      join review_workspace.candidate_revision_snapshot_links snapshot_link on snapshot_link.candidate_revision_id = revision.id
+      join review_workspace.resource_snapshots snapshot on snapshot.id = snapshot_link.resource_snapshot_id
+      where state.status = 'approved_for_future_export'
+        and revision.kind in ('update', 'closure_review')
+        and revision.resource_id is not null
+        and snapshot.source_payload->>'source_relation' = $1
+      order by state.updated_at, state.candidate_id
+    `, [sourceRelation]);
+    return rows.flatMap((row) => row.source_record && typeof row.source_record === "object" && !Array.isArray(row.source_record)
+      ? [{ sourceRecord: row.source_record as Record<string, unknown>, approvedValues: Object.fromEntries(row.approved_field_paths.flatMap((field) => row.proposed_values[field] === undefined ? [] : [[field, row.proposed_values[field]!]])) }]
+      : []);
   }
 
   async seededResource(resourceId: string, snapshotId?: string): Promise<{ id: string; payload: Record<string, unknown> } | undefined> {
