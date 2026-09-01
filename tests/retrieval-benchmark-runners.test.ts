@@ -36,7 +36,7 @@ test("native and browser runners compare the same local-only fixtures", async ()
     const browserDynamic = await runPlaywright(dynamicTarget!, origin);
     const nativeRedirect = await runNativeHttp(redirectTarget!, origin);
     assert.equal(nativeStatic.values?.name, "Example Pantry");
-    assert.equal(nativeDynamic.values, undefined);
+    assert.equal(nativeDynamic.terminal, "no_result");
     assert.equal(browserDynamic.terminal, "success", JSON.stringify(browserDynamic));
     assert.equal(browserDynamic.values?.name, "Rendered Pantry");
     assert.equal(nativeRedirect.terminal, "redirect_denied");

@@ -34,7 +34,7 @@ const allowedTerminal = new Set<BenchmarkTerminal>(["success", "no_result", "blo
 
 export function validateBenchmarkManifest(manifest: BenchmarkManifest): void {
   const fixtureUrl = new URL(manifest.fixtureOrigin);
-  if (fixtureUrl.protocol !== "http:" || !["127.0.0.1", "::1", "localhost"].includes(fixtureUrl.hostname)) throw new Error("Benchmark fixture origin must be local HTTP.");
+  if (fixtureUrl.protocol !== "http:" || !["127.0.0.1", "::1", "localhost", "fixture"].includes(fixtureUrl.hostname)) throw new Error("Benchmark fixture origin must be local HTTP or the internal fixture service.");
   const origin = fixtureUrl.origin;
   if (!manifest.version.trim() || !manifest.targets.length) throw new Error("Benchmark manifest requires a version and at least one target.");
   const ids = new Set<string>();

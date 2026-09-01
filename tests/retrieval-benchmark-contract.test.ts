@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { assertNoBenchmarkAuthorityEnvironment, assertReceipt, matchesExpected, redactedReceipt, validateBenchmarkManifest, type BenchmarkManifest } from "../src/lib/retrieval/benchmark-contract.ts";
 
@@ -17,4 +18,5 @@ test("benchmark manifest remains fixture-bound and receipts remain redacted", ()
   assert.equal(matchesExpected(manifest.targets[0]!, receipt), true);
   assert.throws(() => assertReceipt(manifest, { ...receipt, requestCount: 2 }), /ceiling/);
   assert.throws(() => assertNoBenchmarkAuthorityEnvironment({ REVIEW_DATABASE_URL: "postgres://not-used" }), /REVIEW_DATABASE_URL/);
+  assert.doesNotThrow(() => validateBenchmarkManifest(JSON.parse(readFileSync(new URL("./fixtures/retrieval-benchmark/manifest.json", import.meta.url), "utf8"))));
 });

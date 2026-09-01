@@ -1,0 +1,24 @@
+{
+  "version": "v1",
+  "fixtureOrigin": "http://fixture",
+  "targets": [
+    {
+      "id": "static-service-page",
+      "url": "http://fixture/static.html",
+      "requestCeiling": 1,
+      "expected": {
+        "terminal": "success",
+        "values": { "name": "Example Pantry", "address": "1 Main St", "phone": "312-555-0100" }
+      }
+    },
+    {
+      "id": "dynamic-service-page",
+      "url": "http://fixture/dynamic.html",
+      "requestCeiling": 1,
+      "expected": {
+        "terminal": "success",
+        "values": { "name": "Rendered Pantry" }
+      }
+    }
+  ]
+}

@@ -29,8 +29,10 @@ export async function runPlaywright(target: BenchmarkTarget, fixtureOrigin: stri
     });
     const response = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 5_000 });
     await page.waitForTimeout(25);
-    const terminal = denied ?? (response?.status() === 429 ? "rate_limited" : response?.status() === 403 ? "blocked" : response?.ok() ? "success" : "malformed");
-    return redactedReceipt({ targetId: target.id, runner: "playwright", runnerVersion: "playwright", requestedUrl: target.url, finalUrl: page.url(), policyDecision: terminal === "redirect_denied" || terminal === "request_budget_exceeded" ? "denied" : "allowed", elapsedMs: Math.round(performance.now() - started), requestCount: requests, terminal, ...(terminal === "success" ? { values: extractBenchmarkValues(await page.content()) } : {}) });
+    const responseTerminal = response?.status() === 429 ? "rate_limited" : response?.status() === 403 ? "blocked" : response?.ok() ? "success" : "malformed";
+    const values = !denied && responseTerminal === "success" ? extractBenchmarkValues(await page.content()) : undefined;
+    const terminal = denied ?? (responseTerminal === "success" && !values ? "no_result" : responseTerminal);
+    return redactedReceipt({ targetId: target.id, runner: "playwright", runnerVersion: "playwright", requestedUrl: target.url, finalUrl: page.url(), policyDecision: terminal === "redirect_denied" || terminal === "request_budget_exceeded" ? "denied" : "allowed", elapsedMs: Math.round(performance.now() - started), requestCount: requests, terminal, ...(values ? { values } : {}) });
   } catch (error) {
     return redactedReceipt({ targetId: target.id, runner: "playwright", runnerVersion: "playwright", requestedUrl: target.url, policyDecision: denied ? "denied" : "allowed", elapsedMs: Math.round(performance.now() - started), requestCount: requests, terminal: denied ?? classifiedError(error), diagnostic: error instanceof Error ? error.message : "Playwright runner failed." });
   } finally {

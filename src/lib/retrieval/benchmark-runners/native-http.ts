@@ -18,9 +18,10 @@ export async function runNativeHttp(target: BenchmarkTarget, fixtureOrigin: stri
         current = new URL(location, current);
         continue;
       }
-      const terminal = response.status === 429 ? "rate_limited" : response.status === 403 ? "blocked" : response.ok ? "success" : "malformed";
-      const html = terminal === "success" ? await response.text() : "";
-      return redactedReceipt({ targetId: target.id, runner: "native_http", runnerVersion: process.version, requestedUrl: target.url, finalUrl: current.toString(), policyDecision: "allowed", elapsedMs: Math.round(performance.now() - started), requestCount: requests, terminal, ...(terminal === "success" ? { values: extractBenchmarkValues(html) } : {}) });
+      const responseTerminal = response.status === 429 ? "rate_limited" : response.status === 403 ? "blocked" : response.ok ? "success" : "malformed";
+      const values = responseTerminal === "success" ? extractBenchmarkValues(await response.text()) : undefined;
+      const terminal = responseTerminal === "success" && !values ? "no_result" : responseTerminal;
+      return redactedReceipt({ targetId: target.id, runner: "native_http", runnerVersion: process.version, requestedUrl: target.url, finalUrl: current.toString(), policyDecision: "allowed", elapsedMs: Math.round(performance.now() - started), requestCount: requests, terminal, ...(values ? { values } : {}) });
     }
   } catch (error) {
     return redactedReceipt({ targetId: target.id, runner: "native_http", runnerVersion: process.version, requestedUrl: target.url, finalUrl: current.toString(), policyDecision: "allowed", elapsedMs: Math.round(performance.now() - started), requestCount: requests, terminal: classifiedError(error), diagnostic: error instanceof Error ? error.message : "Native runner failed." });
