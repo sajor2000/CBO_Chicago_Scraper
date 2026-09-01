@@ -24,7 +24,10 @@ test("only an operator can download the manual data-team CSV handoff", () => {
   assert.match(route, /isDataTeamRelation/);
   assert.ok(route.indexOf("createDataTeamCsv") < route.indexOf("Content-Disposition"));
   assert.match(route, /Data-team handoff failed/);
+  assert.match(route, /status: 500/);
+  assert.match(route, /Data-team handoff is unavailable/);
   assert.doesNotMatch(route, /AZURE_EXPORT_MAPPING_JSON/);
   assert.match(page, /requireWorkspaceRole\(userId, "operator"\)/);
+  assert.match(page, /Workspace unavailable/);
   assert.match(page, /new-resource proposals remain out of the files/);
 });

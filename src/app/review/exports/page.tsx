@@ -8,7 +8,8 @@ export default async function ExportsPage() {
     if (!userId) throw new WorkspaceAuthorizationError();
     await requireWorkspaceRole(userId, "operator");
   } catch (error) {
-    if (error instanceof WorkspaceAuthorizationError || error instanceof WorkspaceTargetError) return <main className="work-surface"><section className="state-panel"><h1>Access denied</h1><p>Only a current operator can download an approved data-team handoff.</p><p><a href="/review">Back to workspace</a></p></section></main>;
+    if (error instanceof WorkspaceAuthorizationError) return <main className="work-surface"><section className="state-panel"><h1>Access denied</h1><p>Only a current operator can download an approved data-team handoff.</p><p><a href="/review">Back to workspace</a></p></section></main>;
+    if (error instanceof WorkspaceTargetError) return <main className="work-surface"><section className="state-panel"><h1>Workspace unavailable</h1><p>The review workspace is unavailable. Try again after the service owner restores it.</p><p><a href="/review/exports">Retry</a></p></section></main>;
     throw error;
   }
   return <main className="work-surface">

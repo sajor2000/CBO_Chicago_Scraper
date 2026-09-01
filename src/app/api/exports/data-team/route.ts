@@ -19,6 +19,8 @@ export async function GET(request: Request): Promise<Response> {
       }
     });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Data-team handoff failed." }, { status: error instanceof WorkspaceAuthorizationError ? 403 : error instanceof WorkspaceTargetError ? 503 : 400 });
+    if (error instanceof WorkspaceAuthorizationError) return Response.json({ error: error.message }, { status: 403 });
+    if (error instanceof WorkspaceTargetError) return Response.json({ error: "Data-team handoff is unavailable." }, { status: 503 });
+    return Response.json({ error: "Data-team handoff failed." }, { status: 500 });
   }
 }
