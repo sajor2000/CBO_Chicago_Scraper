@@ -64,7 +64,7 @@ export async function verifyCboSourceSchema(databaseUrl: string | undefined, que
        join pg_catalog.pg_attribute attribute on attribute.attrelid = relation.oid and attribute.attname = information.column_name and attribute.attnum = information.ordinal_position
       where information.table_schema = 'public' and information.table_name = any($1::text[])
       order by information.table_name, information.ordinal_position`,
-    [...sourceRelations]
+    [[...sourceRelations]]
   ) as SourceColumnMetadata[];
   assertSourceSchema(rows);
   return rows;

@@ -7,14 +7,17 @@ const fixture = (): SourceColumnMetadata[] => sourceRelations.flatMap((table_nam
 
 test("source inspector verifies the complete metadata-only contract", async () => {
   let sql = "";
-  const query = { query: async (statement: string) => {
+  let parameters: unknown;
+  const query = { query: async (statement: string, values: unknown) => {
     sql = statement;
+    parameters = values;
     return fixture();
   } };
   await verifyCboSourceSchema("postgresql://reader@example.test/db", query as never);
   assert.match(sql, /information_schema\.columns/);
   assert.match(sql, /pg_catalog\.format_type/);
   assert.match(sql, /any\(\$1::text\[\]\)/);
+  assert.deepEqual(parameters, [["community_resource_locations", "wic_locations"]]);
 });
 
 for (const [name, change] of Object.entries({
